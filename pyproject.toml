@@ -1,0 +1,17 @@
+[project]
+name = "biokb-brenda2"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Christian Ebeling", email = "Christian.Ebeling@scai.fraunhofer.de" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "sqlalchemy>=2.0.44",
+    "tqdm>=4.67.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
