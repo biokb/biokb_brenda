@@ -215,3 +215,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 notebooks/test_data/brenda_2025_1.json
+notebooks/brenda.db
