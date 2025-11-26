@@ -216,3 +216,4 @@ __marimo__/
 .streamlit/secrets.toml
 notebooks/test_data/brenda_2025_1.json
 notebooks/brenda.db
+notebooks/test_data/brenda_inchis.tsv

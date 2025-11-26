@@ -1,0 +1,68 @@
+# version: "1.0"
+name: biokb_brenda2
+
+services:
+
+  # fastapi:
+  #   build: 
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     CONNECTION_STR: "mysql+pymysql://biokb_user:biokb_passwd@mysql:3306/biokb"
+  #   ports:
+  #     - 8080:8000
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+
+  pma:
+    image: docker.io/phpmyadmin/phpmyadmin:5.2.1
+    ports:
+      - 8081:80
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+
+  mysql:
+    image: docker.io/library/mysql:8.4.0
+    ports:
+      - 3307:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: root_passwd
+      MYSQL_DATABASE: biokb
+      MYSQL_USER: biokb_user
+      MYSQL_PASSWORD: biokb_passwd
+    volumes:
+      - mysql:/var/lib/mysql
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_0900_as_ci
+      --sql-mode="STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION"
+      --tmp_table_size=128M
+      --max_heap_table_size=128M
+      --sort_buffer_size=128M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_passwd"]
+      interval: 10s
+      retries: 5
+      
+  neo4j:
+    image: docker.io/library/neo4j:5.26.14
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/neo4j_password
+    volumes:
+      - neo4j_data:/data
+
+
+volumes:
+  mysql:
+  neo4j_data:
+
+
+
+
+
+

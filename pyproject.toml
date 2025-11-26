@@ -8,6 +8,14 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "cryptography>=46.0.3",
+    "neo4j>=6.0.3",
+    "pandas>=2.3.3",
+    "pymysql>=1.1.2",
+    "rdflib>=7.4.0",
+    "rdflib-neo4j>=1.1",
+    "rdkit>=2025.9.1",
+    "requests>=2.32.5",
     "sqlalchemy>=2.0.44",
     "tqdm>=4.67.1",
 ]
@@ -15,3 +23,8 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "podman-compose>=1.5.0",
+]
