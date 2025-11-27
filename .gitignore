@@ -217,3 +217,4 @@ __marimo__/
 notebooks/test_data/brenda_2025_1.json
 notebooks/brenda.db
 notebooks/test_data/brenda_inchis.tsv
+.vscode/settings.json

@@ -28,3 +28,6 @@ build-backend = "hatchling.build"
 dev = [
     "podman-compose>=1.5.0",
 ]
+tests = [
+    "pytest>=9.0.1",
+]
