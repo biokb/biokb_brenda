@@ -6,9 +6,6 @@ import os.path
 import re
 import shutil
 import zipfile
-from ast import Name
-from os import name
-from tkinter.font import names
 from typing import List, Type, TypeVar, Union
 from urllib.parse import urlparse
 from urllib.request import urlretrieve
@@ -16,9 +13,7 @@ from urllib.request import urlretrieve
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
-from pyexpat import model
 from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
-from requests import get
 from sqlalchemy import Engine, inspect
 from sqlalchemy.orm import sessionmaker
 from tqdm import tqdm
