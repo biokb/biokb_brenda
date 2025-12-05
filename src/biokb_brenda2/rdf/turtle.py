@@ -170,7 +170,7 @@ class TurtleCreator:
         self.create_sp_reaction()
         self.create_nsp_reaction()
         self.create_compound_reaction_links()
-        self.create_taxonomy()
+        # self.create_taxonomy() # Not needed as we use biokb_taxtree
         self.create_standard_ttls()
         path_to_zip_file: str = self.create_zip_from_all_ttls()
         logging.info(f"Turtle files zipped in {path_to_zip_file} .")
