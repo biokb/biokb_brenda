@@ -41,3 +41,7 @@ CHEBI_INCHI_URL = (
 )
 
 BASIC_NODE_LABEL = "DbBRENDA"
+
+NEO4J_PASSWORD = "neo4j_password"
+NEO4J_URI = "bolt://localhost:7687"
+NEO4J_USER = "neo4j"
