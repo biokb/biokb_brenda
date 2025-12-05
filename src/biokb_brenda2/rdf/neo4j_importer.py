@@ -1,6 +1,6 @@
 import logging
 import zipfile
-from os import path
+from os import getenv, path
 from typing import LiteralString, cast
 
 from neo4j import GraphDatabase, Query
@@ -8,7 +8,13 @@ from rdflib import Graph
 from rdflib_neo4j import HANDLE_VOCAB_URI_STRATEGY, Neo4jStore, Neo4jStoreConfig
 from tqdm import tqdm
 
-from biokb_brenda2.constants import BASIC_NODE_LABEL, ZIPPED_TTLS_PATH
+from biokb_brenda2.constants import (
+    BASIC_NODE_LABEL,
+    NEO4J_PASSWORD,
+    NEO4J_URI,
+    NEO4J_USER,
+    ZIPPED_TTLS_PATH,
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -17,17 +23,23 @@ logger: logging.Logger = logging.getLogger(name=__name__)
 
 
 class Neo4jImporter:
+
     def __init__(
         self,
-        neo4j_uri: str,
-        neo4j_user: str,
-        neo4j_pwd: str,
+        neo4j_uri: str | None = None,
+        neo4j_user: str | None = None,
+        neo4j_pwd: str | None = None,
     ) -> None:
-        self.neo4j_uri = neo4j_uri
-        self.neo4j_user = neo4j_user
-        self.neo4j_pwd = neo4j_pwd
 
-        self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_pwd))
+        self.neo4j_uri = neo4j_uri if neo4j_uri else getenv("NEO4J_URI", NEO4J_URI)
+        self.neo4j_user = neo4j_user if neo4j_user else getenv("NEO4J_USER", NEO4J_USER)
+        self.neo4j_pwd = (
+            neo4j_pwd if neo4j_pwd else getenv("NEO4J_PASSWORD", NEO4J_PASSWORD)
+        )
+
+        self.driver = GraphDatabase.driver(
+            self.neo4j_uri, auth=(self.neo4j_user, self.neo4j_pwd)
+        )
 
     def _delete_nodes_with_label(self, node_label: str = BASIC_NODE_LABEL):
         """Delete an existing graph in Neo4J.
