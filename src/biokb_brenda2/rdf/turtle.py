@@ -41,25 +41,25 @@ def get_namespace(model: Type[models.Base]) -> Namespace:
 def get_empty_graph():
     """Return an empty RDFlib.Graph with all needed namespaces"""
     graph = Graph()
-    graph.bind(prefix="chebi", namespace=namespaces.chebi_ns)
-    graph.bind(prefix="node", namespace=namespaces.node)
-    graph.bind(prefix="rel", namespace=namespaces.relation)
+    graph.bind(prefix="chebi", namespace=namespaces.CHEBI_NS)
+    graph.bind(prefix="node", namespace=namespaces.NODE_NS)
+    graph.bind(prefix="rel", namespace=namespaces.RELATION_NS)
     graph.bind(prefix="xs", namespace=XSD)
-    graph.bind(prefix="ec", namespace=namespaces.ec_ns)
+    graph.bind(prefix="ec", namespace=namespaces.EC_NS)
     graph.bind(prefix="reac", namespace=get_namespace(models.Reaction))
-    graph.bind(prefix="tax", namespace=namespaces.tax_ns)
+    graph.bind(prefix="tax", namespace=namespaces.NCBI_TAXON_NS)
     graph.bind(prefix="ac", namespace=get_namespace(models.ActivatingCompound))
     graph.bind(prefix="cf", namespace=get_namespace(models.Cofactor))
     graph.bind(prefix="ic", namespace=get_namespace(models.IC50Value))
     graph.bind(prefix="kt", namespace=get_namespace(models.KcatKmValue))
     graph.bind(prefix="ki", namespace=get_namespace(models.KiValue))
     graph.bind(prefix="km", namespace=get_namespace(models.KmValue))
-    graph.bind(prefix="cm", namespace=namespaces.compound_ns)
+    graph.bind(prefix="cm", namespace=namespaces.COMPOUND_NS)
     graph.bind(prefix="lc", namespace=get_namespace(models.Localization))
     graph.bind(prefix="mi", namespace=get_namespace(models.MetalIon))
     graph.bind(prefix="ns", namespace=get_namespace(models.NSPReaction))
     graph.bind(prefix="sp", namespace=get_namespace(models.SPReaction))
-    graph.bind(prefix="ik", namespace=namespaces.inchi_ns)
+    graph.bind(prefix="ik", namespace=namespaces.INCHI_NS)
     graph.bind(prefix="gi", namespace=get_namespace(models.GeneralInformation))
     graph.bind(prefix="ih", namespace=get_namespace(models.Inhibitor))
     graph.bind(prefix="pr", namespace=get_namespace(models.Protein))
@@ -183,8 +183,8 @@ class TurtleCreator:
                 graph.add(
                     triple=(
                         node,
-                        namespaces.relation[get_rel_name(models.Organism)],
-                        namespaces.tax_ns[str(int(organism.tax_id))],
+                        namespaces.RELATION_NS[get_rel_name(models.Organism)],
+                        namespaces.NCBI_TAXON_NS[str(int(organism.tax_id))],
                     )
                 )
 
@@ -236,12 +236,12 @@ class TurtleCreator:
             records = session.query(model).all()  # type: ignore
 
             for row in tqdm(records, desc=f"Creating {model.__tablename__} entries"):
-                ec_node: URIRef = namespaces.ec_ns[str(row.ec_number)]
+                ec_node: URIRef = namespaces.EC_NS[str(row.ec_number)]
                 namespace: Namespace = get_namespace(model)  # type: ignore
                 n: URIRef = namespace[str(row.id)]
-                graph.add(triple=(n, RDF.type, namespaces.node[model.__name__]))
-                graph.add(triple=(n, RDF.type, namespaces.node[BASIC_NODE_LABEL]))
-                graph.add((ec_node, namespaces.relation[get_rel_name(model)], n))  # type: ignore
+                graph.add(triple=(n, RDF.type, namespaces.NODE_NS[model.__name__]))
+                graph.add(triple=(n, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL]))
+                graph.add((ec_node, namespaces.RELATION_NS[get_rel_name(model)], n))  # type: ignore
 
                 attrs = inspect(model).attrs.keys()
 
@@ -249,7 +249,7 @@ class TurtleCreator:
                     graph.add(
                         triple=(
                             n,
-                            namespaces.relation["comment"],
+                            namespaces.RELATION_NS["comment"],
                             Literal(row.comment, datatype=XSD.string),
                         )
                     )
@@ -260,8 +260,10 @@ class TurtleCreator:
                             graph.add(
                                 triple=(
                                     n,
-                                    namespaces.relation[get_rel_name(models.Organism)],
-                                    namespaces.tax_ns[str(int(organism.tax_id))],
+                                    namespaces.RELATION_NS[
+                                        get_rel_name(models.Organism)
+                                    ],
+                                    namespaces.NCBI_TAXON_NS[str(int(organism.tax_id))],
                                 )
                             )
 
@@ -272,7 +274,7 @@ class TurtleCreator:
                     graph.add(
                         triple=(
                             n,
-                            namespaces.relation["value"],
+                            namespaces.RELATION_NS["value"],
                             Literal(row.value, datatype=datatype),
                         )
                     )
@@ -281,7 +283,7 @@ class TurtleCreator:
                     graph.add(
                         triple=(
                             n,
-                            namespaces.relation["value_max"],
+                            namespaces.RELATION_NS["value_max"],
                             Literal(row.value_max, datatype=XSD.float),
                         )
                     )
@@ -294,8 +296,8 @@ class TurtleCreator:
                     graph.add(
                         triple=(
                             n,
-                            namespaces.relation[get_rel_name(models.Compound)],
-                            namespaces.compound_ns[
+                            namespaces.RELATION_NS[get_rel_name(models.Compound)],
+                            namespaces.COMPOUND_NS[
                                 str(int(row.compound.brenda_ligand_id))
                             ],
                         )
@@ -319,21 +321,23 @@ class TurtleCreator:
             ).all()
 
             for enzyme in tqdm(enzymes, desc="Creating enzyme nodes"):
-                subject: URIRef = namespaces.ec_ns[str(enzyme.ec_number)]
+                subject: URIRef = namespaces.EC_NS[str(enzyme.ec_number)]
                 graph.add(
                     triple=(
                         subject,
                         RDF.type,
-                        namespaces.node[models.EnzymeClass.__name__],
+                        namespaces.NODE_NS[models.EnzymeClass.__name__],
                     )
                 )
-                graph.add(triple=(subject, RDF.type, namespaces.node[BASIC_NODE_LABEL]))
+                graph.add(
+                    triple=(subject, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL])
+                )
 
                 for column in ["systematic_name", "recommended_name", "ec_number"]:
                     graph.add(
                         triple=(
                             subject,
-                            namespaces.relation[column],
+                            namespaces.RELATION_NS[column],
                             Literal(
                                 lexical_or_value=getattr(enzyme, column),
                                 datatype=XSD.string,
@@ -358,14 +362,20 @@ class TurtleCreator:
                 namespace: Namespace = get_namespace(models.Protein)
                 protein: URIRef = namespace[str(p.id)]
                 graph.add(
-                    triple=(protein, RDF.type, namespaces.node[models.Protein.__name__])
+                    triple=(
+                        protein,
+                        RDF.type,
+                        namespaces.NODE_NS[models.Protein.__name__],
+                    )
                 )
-                graph.add(triple=(protein, RDF.type, namespaces.node[BASIC_NODE_LABEL]))
-                enzyme_class: URIRef = namespaces.ec_ns[str(p.ec_number)]
+                graph.add(
+                    triple=(protein, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL])
+                )
+                enzyme_class: URIRef = namespaces.EC_NS[str(p.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.relation[get_rel_name(models.Protein)],
+                        namespaces.RELATION_NS[get_rel_name(models.Protein)],
                         protein,
                     )
                 )
@@ -374,8 +384,8 @@ class TurtleCreator:
                     graph.add(
                         (
                             protein,
-                            namespaces.relation[get_rel_name(models.Organism)],
-                            namespaces.tax_ns[str(organism.tax_id)],
+                            namespaces.RELATION_NS[get_rel_name(models.Organism)],
+                            namespaces.NCBI_TAXON_NS[str(organism.tax_id)],
                         )
                     )
         ttl_path = os.path.join(self.__ttls_folder, "brenda_protein.ttl")
@@ -397,22 +407,24 @@ class TurtleCreator:
                     triple=(
                         subject,
                         RDF.type,
-                        namespaces.node[models.Reaction.__name__],
+                        namespaces.NODE_NS[models.Reaction.__name__],
                     )
                 )
-                graph.add(triple=(subject, RDF.type, namespaces.node[BASIC_NODE_LABEL]))
-                enzyme_class: URIRef = namespaces.ec_ns[str(reaction.ec_number)]
+                graph.add(
+                    triple=(subject, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL])
+                )
+                enzyme_class: URIRef = namespaces.EC_NS[str(reaction.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.relation[get_rel_name(models.Reaction)],
+                        namespaces.RELATION_NS[get_rel_name(models.Reaction)],
                         subject,
                     )
                 )
                 graph.add(
                     triple=(
                         subject,
-                        namespaces.relation["reaction"],
+                        namespaces.RELATION_NS["reaction"],
                         Literal(lexical_or_value=reaction.value, datatype=XSD.string),
                     )
                 )
@@ -432,8 +444,8 @@ class TurtleCreator:
                 graph.add(
                     triple=(
                         reac_node,
-                        namespaces.relation["HAS_SUBSTRATE"],
-                        namespaces.compound_ns[str(int(substrate.brenda_ligand_id))],
+                        namespaces.RELATION_NS["HAS_SUBSTRATE"],
+                        namespaces.COMPOUND_NS[str(int(substrate.brenda_ligand_id))],
                     )
                 )
         for product in reaction.products:
@@ -441,8 +453,8 @@ class TurtleCreator:
                 graph.add(
                     triple=(
                         reac_node,
-                        namespaces.relation["HAS_PRODUCT"],
-                        namespaces.compound_ns[str(int(product.brenda_ligand_id))],
+                        namespaces.RELATION_NS["HAS_PRODUCT"],
+                        namespaces.COMPOUND_NS[str(int(product.brenda_ligand_id))],
                     )
                 )
 
@@ -461,17 +473,21 @@ class TurtleCreator:
                     triple=(
                         sp_reac_node,
                         RDF.type,
-                        namespaces.node[models.SPReaction.__name__],
+                        namespaces.NODE_NS[models.SPReaction.__name__],
                     )
                 )
                 graph.add(
-                    triple=(sp_reac_node, RDF.type, namespaces.node[BASIC_NODE_LABEL])
+                    triple=(
+                        sp_reac_node,
+                        RDF.type,
+                        namespaces.NODE_NS[BASIC_NODE_LABEL],
+                    )
                 )
-                enzyme_class: URIRef = namespaces.ec_ns[str(reaction.ec_number)]
+                enzyme_class: URIRef = namespaces.EC_NS[str(reaction.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.relation[get_rel_name(models.SPReaction)],
+                        namespaces.RELATION_NS[get_rel_name(models.SPReaction)],
                         sp_reac_node,
                     )
                 )
@@ -480,7 +496,7 @@ class TurtleCreator:
                         graph.add(
                             triple=(
                                 sp_reac_node,
-                                namespaces.relation[col],
+                                namespaces.RELATION_NS[col],
                                 Literal(getattr(reaction, col), datatype=XSD.string),
                             )
                         )
@@ -506,17 +522,21 @@ class TurtleCreator:
                     triple=(
                         nsp_reac_node,
                         RDF.type,
-                        namespaces.node[models.NSPReaction.__name__],
+                        namespaces.NODE_NS[models.NSPReaction.__name__],
                     )
                 )
                 graph.add(
-                    triple=(nsp_reac_node, RDF.type, namespaces.node[BASIC_NODE_LABEL])
+                    triple=(
+                        nsp_reac_node,
+                        RDF.type,
+                        namespaces.NODE_NS[BASIC_NODE_LABEL],
+                    )
                 )
-                enzyme_class: URIRef = namespaces.ec_ns[str(nsp_reaction.ec_number)]
+                enzyme_class: URIRef = namespaces.EC_NS[str(nsp_reaction.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.relation[get_rel_name(models.NSPReaction)],
+                        namespaces.RELATION_NS[get_rel_name(models.NSPReaction)],
                         nsp_reac_node,
                     )
                 )
@@ -525,7 +545,7 @@ class TurtleCreator:
                         graph.add(
                             triple=(
                                 nsp_reac_node,
-                                namespaces.relation[col],
+                                namespaces.RELATION_NS[col],
                                 Literal(
                                     getattr(nsp_reaction, col), datatype=XSD.string
                                 ),
@@ -553,17 +573,23 @@ class TurtleCreator:
             for comp in tqdm(compounds, desc="Creating compounds"):
                 if comp.brenda_ligand_id:
 
-                    compound: URIRef = namespaces.compound_ns[
+                    compound: URIRef = namespaces.COMPOUND_NS[
                         str(int(comp.brenda_ligand_id))
                     ]
                     graph.add(
-                        (compound, RDF.type, namespaces.node[models.Compound.__name__])
+                        (
+                            compound,
+                            RDF.type,
+                            namespaces.NODE_NS[models.Compound.__name__],
+                        )
                     )
-                    graph.add((compound, RDF.type, namespaces.node[BASIC_NODE_LABEL]))
+                    graph.add(
+                        (compound, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL])
+                    )
                     graph.add(
                         triple=(
                             compound,
-                            namespaces.relation["name"],
+                            namespaces.RELATION_NS["name"],
                             Literal(comp.name, datatype=XSD.string),
                         )
                     )
@@ -592,14 +618,14 @@ class TurtleCreator:
 
             for comp in tqdm(compounds, desc="Creating compound same as chebi links"):
                 if comp.brenda_ligand_id:
-                    compound: URIRef = namespaces.compound_ns[
+                    compound: URIRef = namespaces.COMPOUND_NS[
                         str(int(comp.brenda_ligand_id))
                     ]
                     graph.add(
                         triple=(
                             compound,
-                            namespaces.relation["SAME_AS"],
-                            namespaces.chebi_ns[str(int(comp.chebi_id))],
+                            namespaces.RELATION_NS["SAME_AS"],
+                            namespaces.CHEBI_NS[str(int(comp.chebi_id))],
                         )
                     )
 
@@ -625,14 +651,14 @@ class TurtleCreator:
 
             for comp in tqdm(compounds, desc="Creating compound same as inchi links"):
                 if comp.brenda_ligand_id:
-                    compound: URIRef = namespaces.compound_ns[
+                    compound: URIRef = namespaces.COMPOUND_NS[
                         str(int(comp.brenda_ligand_id))
                     ]
                     graph.add(
                         triple=(
                             compound,
-                            namespaces.relation["SAME_AS"],
-                            namespaces.inchi_ns[comp.inchi_key],
+                            namespaces.RELATION_NS["SAME_AS"],
+                            namespaces.INCHI_NS[comp.inchi_key],
                         )
                     )
 
@@ -723,39 +749,41 @@ class TurtleCreator:
 
         graph: Graph = get_empty_graph()
         for tax_id in needed_taxids:
-            taxonomy_node: URIRef = namespaces.tax_ns[str(tax_id)]
+            taxonomy_node: URIRef = namespaces.NCBI_TAXON_NS[str(tax_id)]
             graph.add(
                 triple=(
                     taxonomy_node,
                     RDF.type,
-                    namespaces.node[models.Organism.__name__],
+                    namespaces.NODE_NS[models.Organism.__name__],
                 )
             )
             graph.add(
-                triple=(taxonomy_node, RDF.type, namespaces.node["_NCBI_Taxonomy"])
+                triple=(taxonomy_node, RDF.type, namespaces.NODE_NS["_NCBI_Taxonomy"])
             )
             name = df_names.loc[tax_id, "name_txt"]
             graph.add(
                 triple=(
                     taxonomy_node,
-                    namespaces.relation["name"],
+                    namespaces.RELATION_NS["name"],
                     Literal(name, datatype=XSD.string),
                 )
             )
             graph.add(
                 triple=(
                     taxonomy_node,
-                    namespaces.relation["taxid"],
+                    namespaces.RELATION_NS["taxid"],
                     Literal(tax_id, datatype=XSD.integer),
                 )
             )
             parent_tax_id = df_tree.loc[tax_id, "parent_tax_id"]
             if tax_id != parent_tax_id:
-                parent_taxonomy_node: URIRef = namespaces.tax_ns[str(parent_tax_id)]
+                parent_taxonomy_node: URIRef = namespaces.NCBI_TAXON_NS[
+                    str(parent_tax_id)
+                ]
                 graph.add(
                     triple=(
                         taxonomy_node,
-                        namespaces.relation["HAS_PARENT"],
+                        namespaces.RELATION_NS["HAS_PARENT"],
                         parent_taxonomy_node,
                     )
                 )
