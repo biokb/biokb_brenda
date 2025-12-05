@@ -1,5 +1,5 @@
 # version: "1.0"
-name: biokb_taxtree_api
+name: biokb_brenda_api
 
 services:
 
