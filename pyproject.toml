@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "click>=8.3.1",
     "cryptography>=46.0.3",
     "neo4j>=6.0.3",
     "pandas>=2.3.3",
@@ -28,6 +29,11 @@ build-backend = "hatchling.build"
 dev = [
     "podman-compose>=1.5.0",
 ]
+docs = [
+    "eralchemy[graphviz]>=1.6.0",
+]
 tests = [
     "pytest>=9.0.1",
 ]
+[project.scripts]
+biokb-brenda = "biokb_brenda2.cli:cli"
