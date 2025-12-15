@@ -11,11 +11,8 @@ PROJECT_FOLDER = os.path.join(BIOKB_FOLDER, PROJECT_NAME)
 DATA_FOLDER = os.path.join(PROJECT_FOLDER, "data")
 EXPORT_FOLDER = os.path.join(DATA_FOLDER, "ttls")
 ZIPPED_TTLS_PATH = os.path.join(DATA_FOLDER, "ttls.zip")
-DB_DEFAULT_CONNECTION_STR = (
-    "mysql+pymysql://biokb_user:biokb_passwd@localhost:3306/biokb?charset=utf8mb4"
-)
+DB_DEFAULT_CONNECTION_STR = "sqlite:///" + os.path.join(BIOKB_FOLDER, "biokb.db")
 DEFAULT_PATH_TO_DATA_FILE = os.path.join(DATA_FOLDER, "brenda.tar.gz")
-DB_DEFAULT_CONNECTION_STR = f"sqlite:///{BIOKB_FOLDER}/biokb.db"
 DOWNLOAD_URL = "https://www.brenda-enzymes.org/download.php"
 
 if not os.path.exists(DATA_FOLDER):
