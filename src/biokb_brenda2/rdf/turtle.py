@@ -154,7 +154,7 @@ class TurtleCreator:
         self.__engine = engine
         self.Session = sessionmaker(bind=self.__engine)
 
-    def create_all_ttls(self) -> str:
+    def create_ttls(self) -> str:
         """Create all RDF turtle, zip all files and returns the path to the zipped file.
 
         Returns:
@@ -438,7 +438,6 @@ class TurtleCreator:
         reac_node: URIRef,
         graph: Graph,
     ):
-        logging.info("Create substrate and product nodes for reaction.")
         for substrate in reaction.substrates:
             if substrate.brenda_ligand_id:
                 graph.add(
