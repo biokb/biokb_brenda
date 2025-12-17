@@ -7,12 +7,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from biokb_brenda2.db.importer import DbImporter
+from biokb_brenda.db.importer import DbImporter
 
 """Tests for BRENDA database importer."""
 
 
-from biokb_brenda2.db.models import (
+from biokb_brenda.db.models import (
     Author,
     Base,
     Compound,
