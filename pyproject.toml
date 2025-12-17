@@ -1,5 +1,5 @@
 [project]
-name = "biokb-brenda2"
+name = "biokb-brenda"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -22,8 +22,8 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
@@ -36,4 +36,4 @@ tests = [
     "pytest>=9.0.1",
 ]
 [project.scripts]
-biokb-brenda = "biokb_brenda2.cli:cli"
+biokb-brenda = "biokb_brenda.cli:cli"

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from sqlalchemy import create_engine
 
-from biokb_brenda2.db.manager import DbManager
+from biokb_brenda.db.manager import DbManager
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ class TestDbManagerImportData:
 
     def test_import_data_with_provided_path(self, db_manager, test_data_path):
         """Test import_data when data_file_path is provided."""
-        with patch("biokb_brenda2.db.manager.DbImporter") as mock_importer_class:
+        with patch("biokb_brenda.db.manager.DbImporter") as mock_importer_class:
             mock_importer = MagicMock()
             mock_importer_class.return_value = mock_importer
 
@@ -45,7 +45,7 @@ class TestDbManagerImportData:
         """Test import_data downloads file when no path is provided."""
         with (
             patch.object(db_manager, "download_data_file") as mock_download,
-            patch("biokb_brenda2.db.manager.DbImporter") as mock_importer_class,
+            patch("biokb_brenda.db.manager.DbImporter") as mock_importer_class,
         ):
 
             mock_download.return_value = "/path/to/downloaded/file.json"
@@ -63,7 +63,7 @@ class TestDbManagerImportData:
         """Test import_data with force_download=True."""
         with (
             patch.object(db_manager, "download_data_file") as mock_download,
-            patch("biokb_brenda2.db.manager.DbImporter") as mock_importer_class,
+            patch("biokb_brenda.db.manager.DbImporter") as mock_importer_class,
         ):
 
             mock_download.return_value = "/path/to/downloaded/file.json"
@@ -79,7 +79,7 @@ class TestDbManagerImportData:
 
     def test_import_data_creates_importer_with_engine(self, db_manager, test_data_path):
         """Test that import_data creates DbImporter with the correct engine."""
-        with patch("biokb_brenda2.db.manager.DbImporter") as mock_importer_class:
+        with patch("biokb_brenda.db.manager.DbImporter") as mock_importer_class:
             mock_importer = MagicMock()
             mock_importer_class.return_value = mock_importer
 
