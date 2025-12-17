@@ -7,7 +7,7 @@ from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from biokb_brenda2.constants import PROJECT_NAME
+from biokb_brenda.constants import PROJECT_NAME
 
 table_prefix = PROJECT_NAME + "_"
 

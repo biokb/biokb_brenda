@@ -7,8 +7,8 @@ import requests
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import sessionmaker
 
-from biokb_brenda2.constants import DATA_FOLDER, DB_DEFAULT_CONNECTION_STR, DOWNLOAD_URL
-from biokb_brenda2.db.importer import DbImporter
+from biokb_brenda.constants import DATA_FOLDER, DB_DEFAULT_CONNECTION_STR, DOWNLOAD_URL
+from biokb_brenda.db.importer import DbImporter
 
 logger = getLogger(__name__)
 

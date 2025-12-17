@@ -21,14 +21,14 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 
-from biokb_brenda2.constants import (
+from biokb_brenda.constants import (
     BASIC_NODE_LABEL,
     DATA_FOLDER,
     EXPORT_FOLDER,
     TAXONOMY_URL,
 )
-from biokb_brenda2.db import models
-from biokb_brenda2.rdf import namespaces
+from biokb_brenda.db import models
+from biokb_brenda.rdf import namespaces
 
 BaseModels = TypeVar("BaseModels", bound=models.Base)
 

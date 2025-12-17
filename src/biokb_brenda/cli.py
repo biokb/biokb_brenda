@@ -1,10 +1,10 @@
 import click
 from sqlalchemy import create_engine
 
-from biokb_brenda2 import __version__
-from biokb_brenda2.db.manager import DbManager
-from biokb_brenda2.rdf.neo4j_importer import Neo4jImporter
-from biokb_brenda2.rdf.turtle import TurtleCreator
+from biokb_brenda import __version__
+from biokb_brenda.db.manager import DbManager
+from biokb_brenda.rdf.neo4j_importer import Neo4jImporter
+from biokb_brenda.rdf.turtle import TurtleCreator
 
 
 @click.group()

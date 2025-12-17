@@ -2,7 +2,7 @@
 
 from rdflib import Namespace
 
-from biokb_brenda2.constants import BASE_URI
+from biokb_brenda.constants import BASE_URI
 
 CHEBI_NS = Namespace("http://purl.obolibrary.org/obo/CHEBI_")
 NCBI_TAXON_NS = Namespace("http://purl.obolibrary.org/obo/NCBITaxon_")

@@ -8,7 +8,7 @@ from rdflib import Graph
 from rdflib_neo4j import HANDLE_VOCAB_URI_STRATEGY, Neo4jStore, Neo4jStoreConfig
 from tqdm import tqdm
 
-from biokb_brenda2.constants import (
+from biokb_brenda.constants import (
     BASIC_NODE_LABEL,
     NEO4J_PASSWORD,
     NEO4J_URI,

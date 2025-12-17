@@ -22,7 +22,7 @@ from sqlalchemy import Engine, create_engine, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 from tqdm import tqdm
 
-from biokb_brenda2.constants import (
+from biokb_brenda.constants import (
     CHEBI_INCHI_URL,
     CHEBI_NAMES_URL,
     DATA_FOLDER,
@@ -33,8 +33,8 @@ from biokb_brenda2.constants import (
     TAXONOMY_DATA_FOLDER,
     TAXONOMY_URL,
 )
-from biokb_brenda2.db import models
-from biokb_brenda2.db.models import (
+from biokb_brenda.db import models
+from biokb_brenda.db.models import (
     ActivatingCompound,
     Application,
     Author,
