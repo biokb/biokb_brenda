@@ -1,1 +1,7 @@
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("biokb_brenda")
+except PackageNotFoundError:
+    # Package is not installed (e.g., during local development)
+    __version__ = "unknown"
