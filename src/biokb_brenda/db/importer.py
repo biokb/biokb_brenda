@@ -156,9 +156,7 @@ class DbImporter:
                     with io.TextIOWrapper(f_bytes, encoding="utf-8") as f:
                         # Load and return the specific 'data' field
                         enzyme_classes: dict = json.load(f)["data"]
-                        logger.info(
-                            f"Loaded {len(enzyme_classes)} enzyme classes from {file_path}"
-                        )
+                        logger.info(f"Loaded {len(enzyme_classes)} enzyme classes")
                         if not isinstance(enzyme_classes, dict):
                             raise ValueError(
                                 "The 'data' field in the JSON file is not a dictionary."
@@ -188,7 +186,7 @@ class DbImporter:
         """
         self.recreate_tables()
         enzyme_classes = self.load_json_from_file(file_path)
-        logger.info(f"Read enzyme classes from {file_path}")
+        logger.info(f"Read enzyme classes")
         self._import_and_collect_organisms(enzyme_classes)
         self._import_and_collect_references(enzyme_classes)
         for enzyme_class in tqdm(
