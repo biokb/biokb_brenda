@@ -14,13 +14,14 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
-from sqlalchemy import Engine, inspect
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Engine, create_engine, inspect
+from sqlalchemy.orm import Session, sessionmaker
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
 
+from biokb_brenda import constants
 from biokb_brenda.constants import (
     BASIC_NODE_LABEL,
     DATA_FOLDER,
@@ -151,8 +152,9 @@ class TurtleCreator:
         else:
             self.__data_folder = DATA_FOLDER
 
-        self.__engine = engine
-        self.Session = sessionmaker(bind=self.__engine)
+        connection_str = os.getenv("DATABASE_URL", constants.DB_DEFAULT_CONNECTION_STR)
+        self.__engine = engine if engine else create_engine(str(connection_str))
+        self.Session: sessionmaker[Session] = sessionmaker(bind=self.__engine)
 
     def create_ttls(self) -> str:
         """Create all RDF turtle, zip all files and returns the path to the zipped file.
