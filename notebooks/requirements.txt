@@ -1,0 +1,2 @@
+#biokb_brenda>=0.1.0
+eralchemy[graphviz]>=1.6.0

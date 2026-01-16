@@ -1,4 +1,4 @@
-# ![](imgs/biokb_logo_writing.png) BRENDA
+# ![](docs/imgs/biokb_logo_writing.png) BRENDA
 
 #TODO: write a proper README file
 

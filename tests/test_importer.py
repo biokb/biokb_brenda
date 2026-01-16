@@ -119,7 +119,7 @@ class TestDbImporter:
 
         engine = create_engine("sqlite:///:memory:")
         importer = DbImporter(engine)
-        result = importer.load_json_from_file(str(json_file))
+        result = importer.__load_json_from_file(str(json_file))
 
         assert result == test_data["data"]
 

@@ -125,25 +125,17 @@ class DbImporter:
             {}
         )  # Cache for references by their original ID
 
-    def clear_enzyme_class_caches(self):
+    def __clear_enzyme_class_caches(self):
         """Clear the internal caches."""
         self.org_cache.clear()
         self.ref_cache.clear()
 
-    def create_tables(self):
-        """Create all database tables."""
+    def __recreate_tables(self):
+        """Drop and recreate all database tables."""
+        Base.metadata.drop_all(self.engine)
         Base.metadata.create_all(self.engine)
 
-    def drop_tables(self):
-        """Drop all database tables."""
-        Base.metadata.drop_all(self.engine)
-
-    def recreate_tables(self):
-        """Drop and recreate all database tables."""
-        self.drop_tables()
-        self.create_tables()
-
-    def load_json_from_file(self, file_path) -> dict:
+    def __load_json_from_file(self, file_path) -> dict:
         """
         Opens a .tar.gz file, extracts the first file (assumed to be a single JSON file),
         and loads its content into a Python dictionary.
@@ -184,27 +176,27 @@ class DbImporter:
         Returns:
             EnzymeClass object created from the data
         """
-        self.recreate_tables()
-        enzyme_classes = self.load_json_from_file(file_path)
+        self.__recreate_tables()
+        enzyme_classes = self.__load_json_from_file(file_path)
         logger.info(f"Read enzyme classes")
-        self._import_and_collect_organisms(enzyme_classes)
-        self._import_and_collect_references(enzyme_classes)
+        self.__import_and_collect_organisms(enzyme_classes)
+        self.__import_and_collect_references(enzyme_classes)
         for enzyme_class in tqdm(
             enzyme_classes.values(), desc="Importing enzyme classes"
         ):
-            self.clear_enzyme_class_caches()
+            self.__clear_enzyme_class_caches()
             with self.Session.begin() as session:
-                self.import_from_dict(session, enzyme_class)
-        self.update_brenda_ligand_ids()
-        self.update_compound_inchi_chebi()
-        self.update_chebi_ids_with_chebi()
-        self.update_inchi_by_chebi_id()
-        self.update_inchi_keys()
-        self._update_organism_tax_ids()
+                self.__import_from_dict(session, enzyme_class)
+        self.__update_brenda_ligand_ids()
+        self.__update_compound_inchi_chebi()
+        self.__update_chebi_ids_with_chebi()
+        self.__update_inchi_by_chebi_id()
+        self.__update_inchi_keys()
+        self.__update_organism_tax_ids()
 
         return len(enzyme_classes.values())
 
-    def import_from_dict(self, session: Session, enzyme_class: Dict[str, Any]):
+    def __import_from_dict(self, session: Session, enzyme_class: Dict[str, Any]):
         """Import enzyme data from a dictionary.
 
         Args:
@@ -213,9 +205,9 @@ class DbImporter:
         Returns:
             EnzymeClass object created from the data
         """
-        self._import_enzyme_class(session, enzyme_class)
+        self.__import_enzyme_class(session, enzyme_class)
 
-    def _import_and_collect_organisms(self, enzyme_classes):
+    def __import_and_collect_organisms(self, enzyme_classes):
         Org = namedtuple("Org", ["ec", "name", "id"])
         organism_set: set[Org] = set()
         for enzyme_class in tqdm(enzyme_classes.values(), desc="Collecting organisms"):
@@ -243,7 +235,7 @@ class DbImporter:
             r["name_lower"]: id for id, r in df_name.iterrows()
         }
 
-    def _import_and_collect_references(self, enzyme_classes):
+    def __import_and_collect_references(self, enzyme_classes):
         # first collecting all authors
         authors = set()
         for enzyme_class in tqdm(enzyme_classes.values(), desc="Collecting authors"):
@@ -287,9 +279,9 @@ class DbImporter:
                             author_ids=tuple(sorted(author_ids)),
                         )
                     )
-        self._insert_references(reference_set)
+        self.__insert_references(reference_set)
 
-    def _insert_references(self, reference_set: set[Ref]):
+    def __insert_references(self, reference_set: set[Ref]):
         with self.Session.begin() as session:
             for ref in tqdm(reference_set, desc="Inserting references into database"):
                 authors: list[Author] = (
@@ -306,7 +298,7 @@ class DbImporter:
                 )
                 session.add(reference)
 
-    def _import_enzyme_class(
+    def __import_enzyme_class(
         self, session: Session, data: Dict[str, Any]
     ) -> EnzymeClass:
         """Import main enzyme class and all related data.
@@ -329,16 +321,16 @@ class DbImporter:
 
         # Set references
         if "reference" in data:
-            self._set_ref_cache(session, data["reference"])
+            self.__set_ref_cache(session, data["reference"])
 
         # Import proteins
         if "protein" in data:
-            self._set_org_cache(session, data["protein"])
-            self._import_proteins(session, enzyme_class, data["protein"])
+            self.__set_org_cache(session, data["protein"])
+            self.__import_proteins(session, enzyme_class, data["protein"])
 
         # Import simple list fields
         if "synonyms" in data:
-            self._import_list_items(session, ec_number, data["synonyms"], Synonym)
+            self.__import_list_items(session, ec_number, data["synonyms"], Synonym)
 
         only_value_fields = {
             "reaction_type": ReactionType,
@@ -358,7 +350,7 @@ class DbImporter:
             "reaction": Reaction,
         }
         for field_name, model_class in fields_with_reactions.items():
-            self._import_reaction_field(
+            self.__import_reaction_field(
                 session, ec_number, data.get(field_name, []), model_class
             )
 
@@ -376,7 +368,7 @@ class DbImporter:
 
         for field_name, model_class in field_mapping.items():
             if field_name in data:
-                self._import_complex_items(
+                self.__import_complex_items(
                     session, ec_number, data[field_name], model_class
                 )
 
@@ -393,7 +385,7 @@ class DbImporter:
             model_class,
         ) in field_with_with_float_value_and_compounds.items():
             if field_name in data:
-                self._import_items_with_float_value_and_compounds(
+                self.__import_items_with_float_value_and_compounds(
                     session, ec_number, data[field_name], model_class
                 )
 
@@ -407,7 +399,7 @@ class DbImporter:
 
         for field_name, model_class in field_with_compounds.items():
             if field_name in data:
-                self._import_items_with_compound(
+                self.__import_items_with_compound(
                     session, ec_number, data[field_name], model_class
                 )
 
@@ -428,7 +420,7 @@ class DbImporter:
             model_class,
         ) in field_with_with_float_values.items():
             if field_name in data:
-                self._import_items_with_with_float_values(
+                self.__import_items_with_with_float_values(
                     session, ec_number, data[field_name], model_class
                 )
 
@@ -441,13 +433,13 @@ class DbImporter:
 
         for field_name, model_class in fields_only_comment.items():
             if field_name in data:
-                self._import_items_only_comment(
+                self.__import_items_only_comment(
                     session, ec_number, data[field_name], model_class
                 )
 
         return enzyme_class
 
-    def _import_proteins(
+    def __import_proteins(
         self,
         session: Session,
         enzyme_class: EnzymeClass,
@@ -470,7 +462,7 @@ class DbImporter:
                         ec_number=enzyme_class.ec_number,
                         organism_id=organism_id,
                         comment=protein_info.get("comment") or None,
-                        references=self.get_references(protein_info),
+                        references=self.__get_references(protein_info),
                     )
                     session.add(protein)
                     enzyme_class.proteins.append(protein)
@@ -483,7 +475,7 @@ class DbImporter:
                     f"Organism name missing for protein with org_id {org_id} in EC {enzyme_class.ec_number}"
                 )
 
-    def get_references(self, info: dict) -> list[Reference]:
+    def __get_references(self, info: dict) -> list[Reference]:
         reference_num_list = info.get("references", [])
         # Deduplicate reference IDs to prevent unique constraint violations
         unique_ids: set[int] = {int(x) for x in reference_num_list if x.isdigit()}
@@ -493,7 +485,7 @@ class DbImporter:
 
         return list(references)
 
-    def get_organisms(self, info: dict) -> list[Organism]:
+    def __get_organisms(self, info: dict) -> list[Organism]:
         organism_num_list = info.get("proteins", [])
         # Deduplicate organism IDs to prevent unique constraint violations
         unique_ids: set[int] = {int(x) for x in organism_num_list}
@@ -504,7 +496,7 @@ class DbImporter:
 
         return list(organisms)
 
-    def _set_org_cache(
+    def __set_org_cache(
         self,
         session: Session,
         proteins_data: Dict[str, Dict],
@@ -529,7 +521,7 @@ class DbImporter:
                 session.add(organism)
             self.org_cache[int(org_id)] = organism
 
-    def _set_ref_cache(
+    def __set_ref_cache(
         self,
         session: Session,
         references_data: Dict[str, Dict],
@@ -563,7 +555,7 @@ class DbImporter:
                 if reference:
                     self.ref_cache[int(ref_id)] = reference
 
-    def _import_list_items(
+    def __import_list_items(
         self, session: Session, ec_number: str, items: List[Dict], model_class
     ):
         """Import simple list items (e.g., synonyms, reaction_type).
@@ -578,7 +570,7 @@ class DbImporter:
             obj = model_class(ec_number=ec_number, value=item.get("value", ""))
             session.add(obj)
 
-    def _get_or_create_compound(
+    def __get_or_create_compound(
         self, session: Session, compound_name: str | None
     ) -> Compound:
         """Get or create a Compound by name.
@@ -602,15 +594,15 @@ class DbImporter:
     def __delete_stoichiometry(self, reaction_part: str) -> str:
         return re.search(r"^\s*((\d+|n) )?(.*)\s*$", reaction_part.strip()).group(3)  # type: ignore because of the regex match
 
-    def _import_reaction_field(
+    def __import_reaction_field(
         self, session: Session, ec_number: str, items: List[Dict], model_class
     ):
         ir_mapping = {"ir": False, "r": True}
 
         for item in items:
             # Get deduplicated organisms and references
-            organisms: List[Organism] = self.get_organisms(item)
-            references: List[Reference] = self.get_references(item)
+            organisms: List[Organism] = self.__get_organisms(item)
+            references: List[Reference] = self.__get_references(item)
             reaction = item.get("value", "")
             reversibility_found: re.Match[str] | None = re.search(
                 r"^\s*(?P<reaction>.*?)\s*\{(?P<reversibility>i?r)\}\s*$", reaction
@@ -642,12 +634,12 @@ class DbImporter:
                 product_names = []
 
             substrates: List[Compound] = [
-                self._get_or_create_compound(session, name)
+                self.__get_or_create_compound(session, name)
                 for name in substrate_names
                 if name
             ]
             products: list[Compound] = [
-                self._get_or_create_compound(session, name)
+                self.__get_or_create_compound(session, name)
                 for name in product_names
                 if name
             ]
@@ -664,15 +656,15 @@ class DbImporter:
             )
             session.add(nsp_reaction)
 
-    def _import_items_with_compound(
+    def __import_items_with_compound(
         self, session: Session, ec_number: str, items: List[Dict], model_class
     ):
         for item in items:
             # Get deduplicated organisms and references
-            organisms = self.get_organisms(item)
-            references = self.get_references(item)
+            organisms = self.__get_organisms(item)
+            references = self.__get_references(item)
 
-            compound: Compound = self._get_or_create_compound(
+            compound: Compound = self.__get_or_create_compound(
                 session, item.get("value")
             )
 
@@ -685,12 +677,12 @@ class DbImporter:
             )
             session.add(obj)
 
-    def _import_items_only_comment(
+    def __import_items_only_comment(
         self, session: Session, ec_number: str, items: List[Dict], model_class
     ):
         for item in items:
-            organisms = self.get_organisms(item)
-            references = self.get_references(item)
+            organisms = self.__get_organisms(item)
+            references = self.__get_references(item)
             obj = model_class(
                 ec_number=ec_number,
                 comment=item.get("comment") or None,
@@ -699,13 +691,13 @@ class DbImporter:
             )
             session.add(obj)
 
-    def _import_items_with_float_value_and_compounds(
+    def __import_items_with_float_value_and_compounds(
         self, session: Session, ec_number: str, items: List[Dict], model_class
     ):
         for item in items:
             # Get deduplicated organisms and references
-            organisms = self.get_organisms(item)
-            references = self.get_references(item)
+            organisms = self.__get_organisms(item)
+            references = self.__get_references(item)
 
             value_comp = re.search(
                 r"^(?P<value>(-?\d+(\.\d+)?)|(\d+(\.\d+)?e-\d+))(\s*-\s*(?P<value_max>(-?\d+(\.\d+)?)|(\d+(\.\d+)?e-\d+)))?\s+\{(?P<compound_name>.*)\}$",
@@ -717,7 +709,7 @@ class DbImporter:
                 value_max = value_comp.group("value_max")
                 value_max = float(value_max) if value_max is not None else None
                 compound_name = value_comp.group("compound_name")
-                compound = self._get_or_create_compound(session, compound_name)
+                compound = self.__get_or_create_compound(session, compound_name)
 
                 obj = model_class(
                     ec_number=ec_number,
@@ -734,13 +726,13 @@ class DbImporter:
                     f"Invalid format for item value with compound: {item.get('value', '')}"
                 )
 
-    def _import_items_with_with_float_values(
+    def __import_items_with_with_float_values(
         self, session: Session, ec_number: str, items: List[Dict], model_class
     ):
         for item in items:
             # Get deduplicated organisms and references
-            organisms = self.get_organisms(item)
-            references = self.get_references(item)
+            organisms = self.__get_organisms(item)
+            references = self.__get_references(item)
 
             value_comp = re.search(
                 r"^(?P<value>(-?\d+(\.\d+)?)|(\d+(\.\d+)?e-\d+))(\s*-\s*(?P<value_max>(-?\d+(\.\d+)?)|(\d+(\.\d+)?e-\d+)))?$",
@@ -766,7 +758,7 @@ class DbImporter:
                     f"Invalid format for item value with float values: {item.get('value', '')}"
                 )
 
-    def _import_complex_items(
+    def __import_complex_items(
         self, session: Session, ec_number: str, items: List[Dict], model_class
     ):
         """Import complex items with value, proteins, references, and comments.
@@ -779,8 +771,8 @@ class DbImporter:
         """
         for item in items:
             # Get deduplicated organisms and references
-            organisms = self.get_organisms(item)
-            references = self.get_references(item)
+            organisms = self.__get_organisms(item)
+            references = self.__get_references(item)
 
             obj = model_class(
                 ec_number=ec_number,
@@ -791,7 +783,7 @@ class DbImporter:
             )
             session.add(obj)
 
-    def update_compound_inchi_chebi(self) -> Dict[str, int]:
+    def __update_compound_inchi_chebi(self) -> Dict[str, int]:
         """Download compound InChI and ChEBI IDs from BRENDA and updates the database."""
         logger.info(
             "Download compound InChI and ChEBI IDs from BRENDA and updates the database."
@@ -832,7 +824,7 @@ class DbImporter:
             session.execute(stmt)
         return {"comp_inchi_chebi": df.shape[0]}
 
-    def update_brenda_ligand_ids(self) -> Dict[str, int]:
+    def __update_brenda_ligand_ids(self) -> Dict[str, int]:
         """Download and import BRENDA ligands.
 
         BRENDA ligand = BRENDA compound to use the same terminology as ChEBI.
@@ -914,7 +906,7 @@ class DbImporter:
             TaxonomyName.__tablename__, self.engine, if_exists="append", chunksize=10000
         )
 
-    def _update_organism_tax_ids(self):
+    def __update_organism_tax_ids(self):
         """Update the tax_ids in the organism table.
 
         This method performs a multi-step process to assign taxonomy IDs to organisms:
@@ -1003,7 +995,7 @@ class DbImporter:
                     session.execute(stmt)
                     session.commit()
 
-    def update_chebi_ids_with_chebi(self):
+    def __update_chebi_ids_with_chebi(self):
         """Update chebi_ids in the compound table using ChEBI data."""
         logger.info("Update chebi_ids in the compound table using ChEBI data.")
         models.ChebiName.__table__.drop(self.engine, checkfirst=True)  # type: ignore
@@ -1028,7 +1020,7 @@ class DbImporter:
             )
             session.execute(stmt)
 
-    def update_inchi_by_chebi_id(self):
+    def __update_inchi_by_chebi_id(self):
         """Update inchis in the compound table using ChEBI data."""
         logger.info("Update inchis in the compound table using ChEBI data.")
         models.ChebiInchi.__table__.drop(self.engine, checkfirst=True)  # type: ignore
@@ -1070,7 +1062,7 @@ class DbImporter:
             )
             session.execute(stmt)
 
-    def update_inchi_keys(self):
+    def __update_inchi_keys(self):
         """Update inchikeys in the compound table using RDKit."""
         logger.info("Update inchikeys in compound table using RDKit")
         with self.Session.begin() as session:

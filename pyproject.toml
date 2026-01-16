@@ -36,4 +36,4 @@ tests = [
     "pytest>=9.0.1",
 ]
 [project.scripts]
-biokb-brenda = "biokb_brenda.cli:cli"
+biokb-brenda = "biokb_brenda.cli:main"

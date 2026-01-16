@@ -1,10 +1,11 @@
 import os.path
 import re
+import sqlite3
 from logging import getLogger
 from typing import Optional
 
 import requests
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from biokb_brenda.constants import DATA_FOLDER, DB_DEFAULT_CONNECTION_STR, DOWNLOAD_URL
@@ -13,22 +14,60 @@ from biokb_brenda.db.importer import DbImporter
 logger = getLogger(__name__)
 
 
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(
+    dbapi_connection: sqlite3.Connection, _connection_record: object
+) -> None:
+    """Enable foreign key constraint for SQLite."""
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
 class DbManager:
 
     def __init__(
         self,
         engine: Optional[Engine] = None,
     ):
+        """Initialize the database manager.
+
+        Configures the SQLAlchemy engine and session factory used by the
+        importer. If no engine is provided, one is created from the
+        ``CONNECTION_STR`` environment variable or the default
+        ``DB_DEFAULT_CONNECTION_STR`` constant.
+
+        Args:
+            engine: Optional pre-configured SQLAlchemy ``Engine``. If ``None``,
+                a new engine is created from configuration.
+        """
         self.data_file_path: str
         connection_str = os.getenv("CONNECTION_STR", DB_DEFAULT_CONNECTION_STR)
         self.engine: Engine = engine if engine else create_engine(connection_str)
         logger.info(f"Using engine: {self.engine}")
         self.Session = sessionmaker(bind=self.engine)
 
-    def download_data_file(self, force: bool = False) -> str:
-        """Download the data file from BRENDA."""
+    def __download_data_file(self, force: bool = False) -> str:
+        """Download the current BRENDA data archive.
 
-        download_file_name = self.get_current_filename()
+        Downloads the latest JSON archive advertised on the BRENDA download
+        page into ``DATA_FOLDER``. If the file already exists and ``force`` is
+        ``False``, the existing file is reused.
+
+        Args:
+            force: If ``True``, download even if the file already exists.
+
+        Returns:
+            str: Absolute path to the downloaded (or existing) archive file.
+
+        Notes:
+            Network errors during download are logged and the function returns
+            the intended file path regardless. Callers should verify file
+            existence/contents if strict guarantees are required.
+        """
+
+        download_file_name = self.__get_current_filename()
         os.makedirs(DATA_FOLDER, exist_ok=True)
         data_file_path = os.path.join(DATA_FOLDER, download_file_name)
 
@@ -59,8 +98,20 @@ class DbManager:
 
         return data_file_path
 
-    def get_current_filename(self):
-        """Get the current filename from the download page."""
+    def __get_current_filename(self):
+        """Retrieve the current BRENDA JSON archive filename from the site.
+
+        Parses the BRENDA download page and extracts the filename advertised
+        for the JSON archive (e.g., ``brenda_2025_1.json.tar.gz``).
+
+        Returns:
+            str: The filename of the current JSON archive.
+
+        Raises:
+            requests.exceptions.RequestException: If the HTTP request fails or
+                returns a non-2xx status.
+            ValueError: If the expected filename pattern is not found.
+        """
         pattern = r"data-filename=\"(brenda_\d{4}_\d+\.json\.tar\.gz)\""
         response = requests.get(DOWNLOAD_URL, timeout=10)
         response.raise_for_status()
@@ -80,9 +131,24 @@ class DbManager:
         force_download: bool = False,
         keep_files: bool = False,
     ):
-        """Import data into the database."""
+        """Import BRENDA data into the database.
+
+        Ensures a data archive is available (downloading if needed), then
+        delegates import to ``DbImporter``. Optionally removes the archive
+        after import.
+
+        Args:
+            data_file_path: Path to a BRENDA JSON archive. If ``None``, the
+                latest archive is fetched from the download page.
+            force_download: When ``True`` and ``data_file_path`` is ``None``,
+                forces re-downloading the current archive even if present.
+            keep_files: If ``True``, leaves the archive on disk after import.
+
+        Returns:
+            None
+        """
         if data_file_path is None:
-            data_file_path = self.download_data_file(force=force_download)
+            data_file_path = self.__download_data_file(force=force_download)
         importer = DbImporter(self.engine)
         importer.import_from_file(data_file_path)
         if not keep_files:

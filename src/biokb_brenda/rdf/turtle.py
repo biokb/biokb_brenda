@@ -5,6 +5,7 @@ import logging
 import os.path
 import re
 import shutil
+import sqlite3
 import zipfile
 from typing import List, Type, TypeVar, Union
 from urllib.parse import urlparse
@@ -14,11 +15,22 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
-from sqlalchemy import Engine, create_engine, inspect
+from sqlalchemy import Engine, create_engine, event, inspect
 from sqlalchemy.orm import Session, sessionmaker
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(
+    dbapi_connection: sqlite3.Connection, _connection_record: object
+) -> None:
+    """Enable foreign key constraint for SQLite."""
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 from biokb_brenda import constants
@@ -35,12 +47,24 @@ BaseModels = TypeVar("BaseModels", bound=models.Base)
 
 
 def get_namespace(model: Type[models.Base]) -> Namespace:
-    """Generate an RDF namespace for a given SQLAlchemy model class."""
+    """Return the RDF namespace for a given SQLAlchemy model.
+
+    Args:
+        model: A SQLAlchemy declarative model class.
+
+    Returns:
+        Namespace: An `rdflib` Namespace rooted at
+        `"{namespaces.BASE_URI}/{ModelName}#"`.
+    """
     return Namespace(f"{namespaces.BASE_URI}/{model.__name__}#")
 
 
 def get_empty_graph():
-    """Return an empty RDFlib.Graph with all needed namespaces"""
+    """Create a pre-configured empty RDF graph.
+
+    Returns:
+        Graph: An `rdflib.Graph` instance with all required namespaces bound.
+    """
     graph = Graph()
     graph.bind(prefix="chebi", namespace=namespaces.CHEBI_NS)
     graph.bind(prefix="node", namespace=namespaces.NODE_NS)
@@ -69,15 +93,16 @@ def get_empty_graph():
 
 
 def get_rel_name(model: Type[models.Base]) -> str:
-    """
-    Convert a SQLAlchemy model class name to a relationship name in uppercase snake case with underscores.
+    """Convert a model class name to a relationship name.
 
-    Prefixing with "HAS_"
+    The format is uppercase snake case prefixed with ``HAS_``.
 
     Args:
-        model (Type[models.Base]): A SQLAlchemy model class
+        model: A SQLAlchemy model class.
+
     Returns:
-        str: The relationship name in the format "HAS_<UPPERCASE_WITH_UNDERSCORES>"
+        str: Relationship name in the form ``HAS_<UPPERCASE_WITH_UNDERSCORES>``.
+
     Examples:
         >>> get_rel_name(UserProfile)
         'HAS_USER_PROFILE'
@@ -94,14 +119,17 @@ def get_rel_name(model: Type[models.Base]) -> str:
 def recursive_get_parents(
     df_tree: DataFrame, parent_id: int, tax_ids: set[int] = set()
 ) -> set[int]:
-    """Get all parents up to the root for a given parent_id.
+    """Collect all parent taxonomy IDs up to the root.
+
+    Note: ``tax_ids`` is used as an accumulator.
 
     Args:
-        parent_id (_type_): starting taxonomy ID
-        tax_ids (set[int], optional): Collected taxonomy IDs. Defaults to set().
+        df_tree: DataFrame mapping ``tax_id`` to ``parent_tax_id`` (indexed by ``tax_id``).
+        parent_id: Starting taxonomy ID.
+        tax_ids: Mutable accumulator set of collected taxonomy IDs.
 
     Returns:
-        set[int]: whole path up to the root
+        set[int]: The full lineage (including the starting ``parent_id``).
     """
     tax_ids.add(parent_id)
     current_id = df_tree.loc[parent_id, "parent_tax_id"]
@@ -121,15 +149,20 @@ class TurtleCreator:
         export_to_folder: str | None = None,
         data_folder: str | None = None,
     ):
-        """Class to create turtle files.
+        """Initialize the creator used to generate RDF Turtle files.
 
         Args:
-            engine (Engine | None, optional): Default MySQL engine from congif.ini if None.
-            export_to_folder (str | None, optional): Default export folder if None.
-            data_folder (str | None, optional): Default data folder if None.
+            engine: Optional SQLAlchemy ``Engine``. If ``None``, a new engine
+                is created from ``DATABASE_URL`` or the default in constants.
+            export_to_folder: Optional base folder to write output; a ``ttls``
+                subfolder will be created inside it. Defaults to ``EXPORT_FOLDER``.
+            data_folder: Optional folder containing required external data (e.g.,
+                NCBI taxonomy archive). Defaults to ``DATA_FOLDER``.
 
         Raises:
-            Exception: _description_
+            FileExistsError: If ``data_folder`` is provided but does not exist.
+            Exception: If ``data_folder`` exists but is missing the required
+                taxonomy archive file.
         """
         if export_to_folder:
             ttls_folder = os.path.join(export_to_folder, "ttls")
@@ -157,28 +190,39 @@ class TurtleCreator:
         self.Session: sessionmaker[Session] = sessionmaker(bind=self.__engine)
 
     def create_ttls(self) -> str:
-        """Create all RDF turtle, zip all files and returns the path to the zipped file.
+        """Generate all RDF Turtle files and return the ZIP path.
+
+        This orchestrates generation for enzymes, proteins, compounds, reactions,
+        cross-references, and standard tables, then zips the resulting Turtle
+        files and removes the temporary folder.
 
         Returns:
-            str: path to zip file
+            str: Absolute path to the generated ZIP archive containing all TTLs.
         """
         logging.info("Start creating turtle files.")
-        self.create_enzyme_nodes()
-        self.create_proteins()
-        self.create_compound()
-        self.create_compound_same_as_chebi()
-        self.create_compound_same_as_inchi()
-        self.create_reactions()
-        self.create_sp_reaction()
-        self.create_nsp_reaction()
-        self.create_compound_reaction_links()
+        self.__create_enzyme_nodes()
+        self.__create_proteins()
+        self.__create_compound()
+        self.__create_compound_same_as_chebi()
+        self.__create_compound_same_as_inchi()
+        self.__create_reactions()
+        self.__create_sp_reaction()
+        self.__create_nsp_reaction()
+        self.__create_compound_reaction_links()
         # self.create_taxonomy() # Not needed as we use biokb_taxtree
-        self.create_standard_ttls()
-        path_to_zip_file: str = self.create_zip_from_all_ttls()
+        self.__create_standard_ttls()
+        path_to_zip_file: str = self.__create_zip_from_all_ttls()
         logging.info(f"Turtle files zipped in {path_to_zip_file} .")
         return path_to_zip_file
 
     def link_organisms(self, graph, model_instance, node):
+        """Link a node to organism taxonomy entries when available.
+
+        Args:
+            graph: The RDF graph to add triples to.
+            model_instance: An instance that exposes an ``organisms`` relationship.
+            node: The subject node (URIRef) to link from.
+        """
         organism: models.Organism
         for organism in model_instance.organisms:
             if organism.tax_id:
@@ -190,7 +234,7 @@ class TurtleCreator:
                     )
                 )
 
-    def create_standard_ttl(
+    def __create_standard_ttl(
         self,
         model: Union[
             models.IC50Value,
@@ -204,32 +248,21 @@ class TurtleCreator:
             models.Inhibitor,
         ],
     ):
-        """Create RDF turtle representation from a database model and save it to a file.
+        """Create an RDF Turtle file for a standard table model.
 
-        This method converts database records from various BRENDA models into RDF triples
-        and serializes them to a Turtle (.ttl) file. It creates nodes for each record,
-        establishes relationships with EC numbers, and adds various properties based on
-        the model's attributes.
+        This converts all rows of the given model to RDF triples, linking to
+        EC numbers and optional organisms/compounds, then serializes to a TTL
+        file named ``{model.__tablename__}.ttl`` under the output folder.
 
-            model: A SQLAlchemy model class representing one of the supported BRENDA data types.
-                Supported models include IC50Value, KcatKmValue, KiValue, KmValue, Localization,
-                GeneralInformation, ActivatingCompound, MetalIon, and Inhibitor.
-
-        Notes:
-            - Creates an RDF graph with nodes typed according to the model name and BASIC_NODE_LABEL
-            - Links each record to its corresponding EC number via HAS_{MODEL_NAME} relationship
-            - Processes the following optional attributes if present in the model:
-                * comment: Added as a string literal
-                * organisms: Links to taxonomy nodes if tax_id is available
-                * value: Added as float or string literal depending on type
-                * value_max: Added as float literal if not None
-                * compound: Links to compound nodes if brenda_ligand_id is available
-            - The resulting graph is serialized to {model.__tablename__}.ttl in the ttls folder
-            - The graph object is deleted after serialization to free memory
+        Args:
+            model: One of the supported standard models (e.g., ``IC50Value``,
+                ``KcatKmValue``, ``KiValue``, ``KmValue``, ``Localization``,
+                ``GeneralInformation``, ``ActivatingCompound``, ``MetalIon``,
+                ``Inhibitor``).
 
         Raises:
-            May raise exceptions related to database session operations or file I/O during
-            graph serialization.
+            Exception: Propagated from database access or file serialization
+                if issues occur.
         """
         logging.info(f"Create RDF turtle file for {model.__tablename__}.")
         graph: Graph = get_empty_graph()
@@ -310,8 +343,11 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_enzyme_nodes(self):
-        """Create RDF nodes for all enzyme classes in the database."""
+    def __create_enzyme_nodes(self):
+        """Create RDF nodes for all enzyme classes in the database.
+
+        Writes ``brenda_enzyme_class.ttl`` with EC nodes and labels.
+        """
         logging.info("Create RDF enzyme turtle file.")
         graph = get_empty_graph()
 
@@ -351,8 +387,11 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_proteins(self):
-        """Create RDF turtle file for protein entities from the database."""
+    def __create_proteins(self):
+        """Create RDF turtle file for proteins.
+
+        Produces ``brenda_protein.ttl`` linking proteins to EC and organisms.
+        """
 
         logging.info("Create RDF protein turtle file.")
 
@@ -394,8 +433,11 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_reactions(self):
-        """Create reactions."""
+    def __create_reactions(self):
+        """Create RDF turtle file for EC reactions.
+
+        Produces ``brenda_reaction_ec.ttl`` with reaction nodes and labels.
+        """
         logging.info("Create RDF reaction turtle file.")
 
         graph = get_empty_graph()
@@ -434,12 +476,19 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_substrate_product_nodes(
+    def __create_substrate_product_nodes(
         self,
         reaction: models.Reaction | models.SPReaction | models.NSPReaction,
         reac_node: URIRef,
         graph: Graph,
     ):
+        """Add substrate and product edges for a reaction node.
+
+        Args:
+            reaction: Reaction instance (EC, SP, or NSP).
+            reac_node: Subject node representing the reaction.
+            graph: RDF graph where triples are added.
+        """
         for substrate in reaction.substrates:
             if substrate.brenda_ligand_id:
                 graph.add(
@@ -459,9 +508,13 @@ class TurtleCreator:
                     )
                 )
 
-    def create_sp_reaction(self):
+    def __create_sp_reaction(self):
+        """Create RDF turtle file for substrate/product reactions.
+
+        Produces ``brenda_reaction_sp.ttl`` with SP reaction nodes, their
+        properties, substrates, products, organisms, and EC links.
+        """
         logging.info("Create RDF substrate and reaction turtle file.")
-        """Create Substrate/Product reaction."""
         graph = get_empty_graph()
 
         with self.Session() as session:
@@ -502,7 +555,7 @@ class TurtleCreator:
                             )
                         )
 
-                self.create_substrate_product_nodes(reaction, sp_reac_node, graph)
+                self.__create_substrate_product_nodes(reaction, sp_reac_node, graph)
 
                 self.link_organisms(graph, reaction, sp_reac_node)
 
@@ -510,7 +563,12 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_nsp_reaction(self):
+    def __create_nsp_reaction(self):
+        """Create RDF turtle file for natural substrate/product reactions.
+
+        Produces ``nsp_reaction.ttl`` with NSP reaction nodes, their
+        properties, organisms, and EC links.
+        """
         logging.info("Create RDF Natural substrate and product reaction turtle file.")
         graph = get_empty_graph()
         with self.Session() as session:
@@ -560,7 +618,11 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_compound(self):
+    def __create_compound(self):
+        """Create RDF turtle file for compounds.
+
+        Produces ``compound.ttl`` with BRENDA ligand compounds and names.
+        """
         logging.info("Create RDF compound turtle file.")
         graph: Graph = get_empty_graph()
         with self.Session() as session:
@@ -601,7 +663,12 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_compound_same_as_chebi(self):
+    def __create_compound_same_as_chebi(self):
+        """Create RDF links mapping compounds to ChEBI identifiers.
+
+        Produces ``brenda_compound_same_as_chebi.ttl`` with ``SAME_AS`` edges
+        from BRENDA compounds to matching ChEBI entries.
+        """
         logging.info("Read compound same as chebi links")
         graph: Graph = get_empty_graph()
         with self.Session() as session:
@@ -634,7 +701,12 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_compound_same_as_inchi(self):
+    def __create_compound_same_as_inchi(self):
+        """Create RDF links mapping compounds to InChIKey identifiers.
+
+        Produces ``brenda_compound_same_as_inchi.ttl`` with ``SAME_AS`` edges
+        from BRENDA compounds to InChIKey URIs.
+        """
         logging.info("Read compound same as inchi links")
         graph: Graph = get_empty_graph()
         with self.Session() as session:
@@ -667,8 +739,12 @@ class TurtleCreator:
         graph.serialize(ttl_path, format="turtle")
         del graph
 
-    def create_compound_reaction_links(self):
-        """Create nt RDF files with links between substrate/ product to reaction (reaction, nsp reaction, sp reaction)."""
+    def __create_compound_reaction_links(self):
+        """Create RDF Turtle files linking compounds to reactions.
+
+        For each reaction model (EC, SP, NSP), writes a TTL file with edges
+        from reactions to their substrates and products.
+        """
         logging.info("Create RDF compound-reaction link turtle files.")
         reaction_models = [models.Reaction, models.SPReaction, models.NSPReaction]
         for reaction_model in reaction_models:
@@ -685,7 +761,7 @@ class TurtleCreator:
                 ):
                     namespace = get_namespace(reaction_model)
                     reac_node: URIRef = namespace[str(reaction.id)]
-                    self.create_substrate_product_nodes(reaction, reac_node, graph)
+                    self.__create_substrate_product_nodes(reaction, reac_node, graph)
 
             ttl_path = os.path.join(
                 self.__ttls_folder, f"{reaction_model.__tablename__}_compound_link.ttl"
@@ -693,8 +769,14 @@ class TurtleCreator:
             graph.serialize(ttl_path, format="ttl", encoding="utf-8")
             del graph
 
-    def create_taxonomy(self):
-        """Create RDF taxonomy turtle file."""
+    # TODO: Is this needed?
+    def __create_taxonomy(self):
+        """Create RDF taxonomy turtle file.
+
+        Downloads and parses the NCBI taxonomy (if needed), builds the subset
+        of nodes required by the BRENDA organisms present in the database, and
+        serializes them to ``brenda_organism.ttl``.
+        """
         logging.info("Create RDF taxonomy turtle file.")
 
         # download NCBI taxonomy if needed
@@ -793,8 +875,8 @@ class TurtleCreator:
         graph.serialize(destination=ttl_path, format="turtle")
         del graph
 
-    def create_standard_ttls(self):
-        """Create RDF turtle files for tables in standard format."""
+    def __create_standard_ttls(self):
+        """Create RDF Turtle files for all supported standard models."""
 
         _models = [
             models.IC50Value,
@@ -810,7 +892,7 @@ class TurtleCreator:
         ]
         for _model in _models:
             logging.info(f"Creating turtle for { _model.__name__ }")
-            self.create_standard_ttl(_model)
+            self.__create_standard_ttl(_model)
 
         # self.create_standard_ttl(
         #     table="cofactor",
@@ -821,11 +903,11 @@ class TurtleCreator:
         #     namespace=namespaces.cofactor_ns,
         # )
 
-    def create_zip_from_all_ttls(self) -> str:
-        """Create a zipped file from all turtle file and return the path.
+    def __create_zip_from_all_ttls(self) -> str:
+        """Zip all generated Turtle files and return the archive path.
 
         Returns:
-            str: path to zipped file
+            str: Absolute path to the created ZIP archive.
         """
         logger.info("Creating zip file from all turtle files.")
         path_to_zip_file = shutil.make_archive(
