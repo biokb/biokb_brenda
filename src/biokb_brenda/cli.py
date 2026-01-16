@@ -2,10 +2,10 @@ import click
 from sqlalchemy import create_engine
 
 from biokb_brenda import __version__
+from biokb_brenda.constants import NEO4J_USER, PROJECT_NAME
 from biokb_brenda.db.manager import DbManager
 from biokb_brenda.rdf.neo4j_importer import Neo4jImporter
 from biokb_brenda.rdf.turtle import TurtleCreator
-from biokb_brenda.constants import NEO4J_USER, PROJECT_NAME
 
 
 @click.group()
@@ -45,10 +45,12 @@ def main():
     default=f"sqlite:///{PROJECT_NAME}.db",
     help=f"SQLAlchemy engine URL [default: sqlite:///{PROJECT_NAME}.db]",
 )
-def import_data(force_download: bool, connection_string: str):
+def import_data(force_download: bool, connection_string: str, keep_files: bool):
     """Import data."""
     engine = create_engine(connection_string)
-    DbManager(engine=engine).import_data(force_download=force_download)
+    DbManager(engine=engine).import_data(
+        force_download=force_download, keep_files=keep_files
+    )
     click.echo(f"Data imported successfully to {connection_string}")
 
 
