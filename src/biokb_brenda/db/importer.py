@@ -124,11 +124,13 @@ class DbImporter:
         self.ref_cache: Dict[int, Reference] = (
             {}
         )  # Cache for references by their original ID
+        self.comp_cache: Dict[str, Compound] = {}  # Cache for compounds by name
 
     def __clear_enzyme_class_caches(self):
         """Clear the internal caches."""
         self.org_cache.clear()
         self.ref_cache.clear()
+        # don't clear comp_cache here to retain compound cache across imports
 
     def __recreate_tables(self):
         """Drop and recreate all database tables."""
@@ -181,12 +183,17 @@ class DbImporter:
         logger.info(f"Read enzyme classes")
         self.__import_and_collect_organisms(enzyme_classes)
         self.__import_and_collect_references(enzyme_classes)
-        for enzyme_class in tqdm(
-            enzyme_classes.values(), desc="Importing enzyme classes"
-        ):
-            self.__clear_enzyme_class_caches()
-            with self.Session.begin() as session:
-                self.__import_from_dict(session, enzyme_class)
+        counter = 0
+        with self.Session() as session:
+            for enzyme_class in tqdm(
+                enzyme_classes.values(), desc="Importing enzyme classes"
+            ):
+                counter += 1
+                self.__clear_enzyme_class_caches()
+                self.__import_enzyme_class(session, enzyme_class)
+                if counter % 100 == 0:
+                    session.commit()
+            session.commit()
         self.__update_brenda_ligand_ids()
         self.__update_compound_inchi_chebi()
         self.__update_chebi_ids_with_chebi()
@@ -195,17 +202,6 @@ class DbImporter:
         self.__update_organism_tax_ids()
 
         return len(enzyme_classes.values())
-
-    def __import_from_dict(self, session: Session, enzyme_class: Dict[str, Any]):
-        """Import enzyme data from a dictionary.
-
-        Args:
-            data: Dictionary containing BRENDA enzyme data
-
-        Returns:
-            EnzymeClass object created from the data
-        """
-        self.__import_enzyme_class(session, enzyme_class)
 
     def __import_and_collect_organisms(self, enzyme_classes):
         Org = namedtuple("Org", ["ec", "name", "id"])
@@ -582,13 +578,12 @@ class DbImporter:
         if not compound_name:
             raise ValueError("Compound name could not be empty.")
 
-        compound: Compound | None = (
-            session.query(Compound).filter_by(name=compound_name).first()
-        )
+        compound: Compound | None = self.comp_cache.get(compound_name)
         if compound is None:
             compound = Compound(name=compound_name)
             session.add(compound)
             session.flush()
+            self.comp_cache[compound_name] = compound
         return compound
 
     def __delete_stoichiometry(self, reaction_part: str) -> str:

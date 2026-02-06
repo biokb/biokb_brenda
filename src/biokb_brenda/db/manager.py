@@ -5,24 +5,13 @@ from logging import getLogger
 from typing import Optional
 
 import requests
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from biokb_brenda.constants import DATA_FOLDER, DB_DEFAULT_CONNECTION_STR, DOWNLOAD_URL
 from biokb_brenda.db.importer import DbImporter
 
 logger = getLogger(__name__)
-
-
-@event.listens_for(Engine, "connect")
-def set_sqlite_pragma(
-    dbapi_connection: sqlite3.Connection, _connection_record: object
-) -> None:
-    """Enable foreign key constraint for SQLite."""
-    if isinstance(dbapi_connection, sqlite3.Connection):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
 
 
 class DbManager:
@@ -44,9 +33,12 @@ class DbManager:
         """
         self.data_file_path: str
         connection_str = os.getenv("CONNECTION_STR", DB_DEFAULT_CONNECTION_STR)
-        self.engine: Engine = engine if engine else create_engine(connection_str)
-        logger.info(f"Using engine: {self.engine}")
-        self.Session = sessionmaker(bind=self.engine)
+        self.__engine: Engine = engine if engine else create_engine(connection_str)
+        if self.__engine.dialect.name == "sqlite":
+            with self.__engine.connect() as connection:
+                connection.execute(text("pragma foreign_keys=ON"))
+        logger.info("Engine: %s", self.__engine)
+        self.Session = sessionmaker(bind=self.__engine)
 
     def __download_data_file(self, force: bool = False) -> str:
         """Download the current BRENDA data archive.
@@ -129,7 +121,7 @@ class DbManager:
         self,
         data_file_path: Optional[str] = None,
         force_download: bool = False,
-        keep_files: bool = False,
+        keep_files: bool = True,
     ):
         """Import BRENDA data into the database.
 
@@ -149,7 +141,7 @@ class DbManager:
         """
         if data_file_path is None:
             data_file_path = self.__download_data_file(force=force_download)
-        importer = DbImporter(self.engine)
+        importer = DbImporter(self.__engine)
         importer.import_from_file(data_file_path)
         if not keep_files:
             os.remove(data_file_path)

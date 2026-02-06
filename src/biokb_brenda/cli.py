@@ -6,10 +6,28 @@ from biokb_brenda.constants import NEO4J_USER, PROJECT_NAME
 from biokb_brenda.db.manager import DbManager
 from biokb_brenda.rdf.neo4j_importer import Neo4jImporter
 from biokb_brenda.rdf.turtle import TurtleCreator
+import logging
+
+def setup_logging(ctx, param, value):
+    # Only set up logging if the user actually asks for it
+    if value == 1:
+        logging.getLogger("biokb_ipni").setLevel(logging.INFO)
+    elif value >= 2:
+        logging.getLogger("biokb_ipni").setLevel(logging.DEBUG)
+
+    # We must add a handler so the logs actually print to the screen
+    if value > 0:
+        ch = logging.StreamHandler()
+        formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+        ch.setFormatter(formatter)
+        logging.getLogger("fetcher").addHandler(ch)
+
+    return value
 
 
 @click.group()
 @click.version_option(__version__)
+@click.option("-v", count=True, callback=setup_logging, expose_value=False)
 def main():
     """Import in RDBMS, create turtle files and import into Neo4J.
 

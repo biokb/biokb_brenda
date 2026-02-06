@@ -3,7 +3,7 @@ import zipfile
 from os import getenv, path
 from typing import LiteralString, cast
 
-from neo4j import GraphDatabase, Query
+from neo4j import GraphDatabase
 from rdflib import Graph
 from rdflib_neo4j import HANDLE_VOCAB_URI_STRATEGY, Neo4jStore, Neo4jStoreConfig
 from tqdm import tqdm
@@ -53,7 +53,7 @@ class Neo4jImporter:
                 CALL (n) {{
                 WITH n
                 DETACH DELETE n
-                }} IN TRANSACTIONS OF 1000 ROWS;"""
+                }} IN TRANSACTIONS OF 10000 ROWS;"""
             cypher = cast(LiteralString, cypher)
             session.run(cypher)
 
@@ -93,11 +93,19 @@ class Neo4jImporter:
         """
         with zipfile.ZipFile(path_ttl_file_or_zip, "r") as z:
             turtle_file_names = [x for x in z.namelist() if x.endswith(".ttl")]
-            with tqdm(turtle_file_names) as pbar:
-                for turtle_file_name in pbar:
-                    pbar.set_description(f"Processing {turtle_file_name}")
-                    with z.open(turtle_file_name) as file_io:
-                        neo4j_db.parse(file_io, format="ttl")
+
+            # Pre-read all files into memory to avoid repeated zip I/O
+            logger.info("Loading %d TTL files into memory...", len(turtle_file_names))
+            file_contents: list[tuple[str, bytes]] = []
+            for name in turtle_file_names:
+                with z.open(name) as f:
+                    file_contents.append((name, f.read()))
+
+            # Parse files from memory
+            with tqdm(file_contents, desc="Importing TTL files") as pbar:
+                for name, content in pbar:
+                    pbar.set_postfix_str(name)
+                    neo4j_db.parse(data=content, format="ttl")
 
     def __get_neo4j_db(self) -> Graph:
         """Get the Neo4j Graph database connection."""
@@ -121,6 +129,7 @@ class Neo4jImporter:
             custom_prefixes={},
             handle_vocab_uri_strategy=HANDLE_VOCAB_URI_STRATEGY.IGNORE,
             batching=True,
+            batch_size=10000,  # Larger batches for better throughput
         )
 
         neo4j_db = Graph(store=Neo4jStore(config=config))

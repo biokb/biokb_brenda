@@ -1,22 +1,19 @@
 """Module to create RDF turtle files from the BRENDA imported data."""
 
-import io
 import logging
 import os.path
 import re
 import shutil
 import sqlite3
-import zipfile
 from typing import List, Type, TypeVar, Union
 from urllib.parse import urlparse
-from urllib.request import urlretrieve
 
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
 from sqlalchemy import Engine, create_engine, event, inspect
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, joinedload, sessionmaker
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -33,10 +30,10 @@ def set_sqlite_pragma(
         cursor.close()
 
 
-from biokb_brenda import constants
 from biokb_brenda.constants import (
     BASIC_NODE_LABEL,
     DATA_FOLDER,
+    DB_DEFAULT_CONNECTION_STR,
     EXPORT_FOLDER,
     TAXONOMY_URL,
 )
@@ -185,8 +182,8 @@ class TurtleCreator:
         else:
             self.__data_folder = DATA_FOLDER
 
-        connection_str = os.getenv("DATABASE_URL", constants.DB_DEFAULT_CONNECTION_STR)
-        self.__engine = engine if engine else create_engine(str(connection_str))
+        connection_str = os.getenv("CONNECTION_STR", DB_DEFAULT_CONNECTION_STR)
+        self.__engine: Engine = engine if engine else create_engine(connection_str)
         self.Session: sessionmaker[Session] = sessionmaker(bind=self.__engine)
 
     def create_ttls(self) -> str:
@@ -209,7 +206,6 @@ class TurtleCreator:
         self.__create_sp_reaction()
         self.__create_nsp_reaction()
         self.__create_compound_reaction_links()
-        # self.create_taxonomy() # Not needed as we use biokb_taxtree
         self.__create_standard_ttls()
         path_to_zip_file: str = self.__create_zip_from_all_ttls()
         logging.info(f"Turtle files zipped in {path_to_zip_file} .")
@@ -267,18 +263,30 @@ class TurtleCreator:
         logging.info(f"Create RDF turtle file for {model.__tablename__}.")
         graph: Graph = get_empty_graph()
 
+        # Cache computed values outside the loop
+        namespace: Namespace = get_namespace(model)  # type: ignore
+        rel_name = get_rel_name(model)  # type: ignore
+        model_node_type = namespaces.NODE_NS[model.__name__]
+        basic_node_type = namespaces.NODE_NS[BASIC_NODE_LABEL]
+        attrs = set(inspect(model).attrs.keys())
+        organism_rel = namespaces.RELATION_NS[get_rel_name(models.Organism)]
+        compound_rel = namespaces.RELATION_NS[get_rel_name(models.Compound)]
+
         with self.Session() as session:
-            records = session.query(model).all()  # type: ignore
+            # Eager load relationships to avoid N+1 queries
+            query = session.query(model)  # type: ignore
+            if "organisms" in attrs:
+                query = query.options(joinedload(model.organisms))  # type: ignore
+            if "compound" in attrs:
+                query = query.options(joinedload(model.compound))  # type: ignore
+            records = query.all()
 
             for row in tqdm(records, desc=f"Creating {model.__tablename__} entries"):
                 ec_node: URIRef = namespaces.EC_NS[str(row.ec_number)]
-                namespace: Namespace = get_namespace(model)  # type: ignore
                 n: URIRef = namespace[str(row.id)]
-                graph.add(triple=(n, RDF.type, namespaces.NODE_NS[model.__name__]))
-                graph.add(triple=(n, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL]))
-                graph.add((ec_node, namespaces.RELATION_NS[get_rel_name(model)], n))  # type: ignore
-
-                attrs = inspect(model).attrs.keys()
+                graph.add(triple=(n, RDF.type, model_node_type))
+                graph.add(triple=(n, RDF.type, basic_node_type))
+                graph.add((ec_node, namespaces.RELATION_NS[rel_name], n))
 
                 if "comment" in attrs:
                     graph.add(
@@ -295,9 +303,7 @@ class TurtleCreator:
                             graph.add(
                                 triple=(
                                     n,
-                                    namespaces.RELATION_NS[
-                                        get_rel_name(models.Organism)
-                                    ],
+                                    organism_rel,
                                     namespaces.NCBI_TAXON_NS[str(int(organism.tax_id))],
                                 )
                             )
@@ -331,7 +337,7 @@ class TurtleCreator:
                     graph.add(
                         triple=(
                             n,
-                            namespaces.RELATION_NS[get_rel_name(models.Compound)],
+                            compound_rel,
                             namespaces.COMPOUND_NS[
                                 str(int(row.compound.brenda_ligand_id))
                             ],
@@ -383,7 +389,9 @@ class TurtleCreator:
                         )
                     )
 
-        ttl_path = os.path.join(self.__ttls_folder, "brenda_enzyme_class.ttl")
+        ttl_path = os.path.join(
+            self.__ttls_folder, f"{models.EnzymeClass.__tablename__}.ttl"
+        )
         graph.serialize(ttl_path, format="turtle")
         del graph
 
@@ -396,40 +404,51 @@ class TurtleCreator:
         logging.info("Create RDF protein turtle file.")
 
         graph = get_empty_graph()
-        with self.Session() as session:
-            proteins: List[models.Protein] = session.query(models.Protein).all()
 
-            for p in tqdm(tqdm(proteins), desc="Creating proteins"):
-                namespace: Namespace = get_namespace(models.Protein)
+        # Cache computed values outside the loop
+        namespace: Namespace = get_namespace(models.Protein)
+        protein_node_type = namespaces.NODE_NS[models.Protein.__name__]
+        basic_node_type = namespaces.NODE_NS[BASIC_NODE_LABEL]
+        protein_rel = namespaces.RELATION_NS[get_rel_name(models.Protein)]
+        organism_rel = namespaces.RELATION_NS[get_rel_name(models.Organism)]
+
+        with self.Session() as session:
+            # Eager load organism relationship to avoid N+1 queries
+            proteins: List[models.Protein] = (
+                session.query(models.Protein)
+                .options(joinedload(models.Protein.organism))
+                .all()
+            )
+
+            for p in tqdm(proteins, desc="Creating proteins"):
                 protein: URIRef = namespace[str(p.id)]
                 graph.add(
                     triple=(
                         protein,
                         RDF.type,
-                        namespaces.NODE_NS[models.Protein.__name__],
+                        protein_node_type,
                     )
                 )
-                graph.add(
-                    triple=(protein, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL])
-                )
+                graph.add(triple=(protein, RDF.type, basic_node_type))
                 enzyme_class: URIRef = namespaces.EC_NS[str(p.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.RELATION_NS[get_rel_name(models.Protein)],
+                        protein_rel,
                         protein,
                     )
                 )
-                organism = session.get(models.Organism, p.organism_id)
-                if organism and organism.tax_id:
+                if p.organism and p.organism.tax_id:
                     graph.add(
                         (
                             protein,
-                            namespaces.RELATION_NS[get_rel_name(models.Organism)],
-                            namespaces.NCBI_TAXON_NS[str(organism.tax_id)],
+                            organism_rel,
+                            namespaces.NCBI_TAXON_NS[str(p.organism.tax_id)],
                         )
                     )
-        ttl_path = os.path.join(self.__ttls_folder, "brenda_protein.ttl")
+        ttl_path = os.path.join(
+            self.__ttls_folder, f"{models.Protein.__tablename__}.ttl"
+        )
         graph.serialize(ttl_path, format="turtle")
         del graph
 
@@ -441,27 +460,31 @@ class TurtleCreator:
         logging.info("Create RDF reaction turtle file.")
 
         graph = get_empty_graph()
+
+        # Cache computed values outside the loop
+        namespace = get_namespace(models.Reaction)
+        reaction_node_type = namespaces.NODE_NS[models.Reaction.__name__]
+        basic_node_type = namespaces.NODE_NS[BASIC_NODE_LABEL]
+        reaction_rel = namespaces.RELATION_NS[get_rel_name(models.Reaction)]
+
         with self.Session() as session:
             reactions: List[models.Reaction] = session.query(models.Reaction).all()
 
             for reaction in tqdm(reactions, desc="Creating reactions"):
-                namespace = get_namespace(models.Reaction)
                 subject: URIRef = namespace[str(reaction.id)]
                 graph.add(
                     triple=(
                         subject,
                         RDF.type,
-                        namespaces.NODE_NS[models.Reaction.__name__],
+                        reaction_node_type,
                     )
                 )
-                graph.add(
-                    triple=(subject, RDF.type, namespaces.NODE_NS[BASIC_NODE_LABEL])
-                )
+                graph.add(triple=(subject, RDF.type, basic_node_type))
                 enzyme_class: URIRef = namespaces.EC_NS[str(reaction.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.RELATION_NS[get_rel_name(models.Reaction)],
+                        reaction_rel,
                         subject,
                     )
                 )
@@ -472,7 +495,9 @@ class TurtleCreator:
                         Literal(lexical_or_value=reaction.value, datatype=XSD.string),
                     )
                 )
-        ttl_path = os.path.join(self.__ttls_folder, "brenda_reaction_ec.ttl")
+        ttl_path = os.path.join(
+            self.__ttls_folder, f"{models.Reaction.__tablename__}.ttl"
+        )
         graph.serialize(ttl_path, format="turtle")
         del graph
 
@@ -517,31 +542,41 @@ class TurtleCreator:
         logging.info("Create RDF substrate and reaction turtle file.")
         graph = get_empty_graph()
 
+        # Cache computed values outside the loop
+        namespace = get_namespace(models.SPReaction)
+        sp_node_type = namespaces.NODE_NS[models.SPReaction.__name__]
+        basic_node_type = namespaces.NODE_NS[BASIC_NODE_LABEL]
+        sp_rel = namespaces.RELATION_NS[get_rel_name(models.SPReaction)]
+
         with self.Session() as session:
-            sp_reactions = session.query(models.SPReaction).all()
+            # Eager load organisms relationship
+            sp_reactions = (
+                session.query(models.SPReaction)
+                .options(joinedload(models.SPReaction.organisms))
+                .all()
+            )
 
             for reaction in tqdm(sp_reactions, desc="Creating sp reactions"):
-                namespace = get_namespace(models.SPReaction)
                 sp_reac_node: URIRef = namespace[str(reaction.id)]
                 graph.add(
                     triple=(
                         sp_reac_node,
                         RDF.type,
-                        namespaces.NODE_NS[models.SPReaction.__name__],
+                        sp_node_type,
                     )
                 )
                 graph.add(
                     triple=(
                         sp_reac_node,
                         RDF.type,
-                        namespaces.NODE_NS[BASIC_NODE_LABEL],
+                        basic_node_type,
                     )
                 )
                 enzyme_class: URIRef = namespaces.EC_NS[str(reaction.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.RELATION_NS[get_rel_name(models.SPReaction)],
+                        sp_rel,
                         sp_reac_node,
                     )
                 )
@@ -555,11 +590,11 @@ class TurtleCreator:
                             )
                         )
 
-                self.__create_substrate_product_nodes(reaction, sp_reac_node, graph)
-
                 self.link_organisms(graph, reaction, sp_reac_node)
 
-        ttl_path = os.path.join(self.__ttls_folder, "brenda_reaction_sp.ttl")
+        ttl_path = os.path.join(
+            self.__ttls_folder, f"{models.SPReaction.__tablename__}.ttl"
+        )
         graph.serialize(ttl_path, format="turtle")
         del graph
 
@@ -571,31 +606,42 @@ class TurtleCreator:
         """
         logging.info("Create RDF Natural substrate and product reaction turtle file.")
         graph = get_empty_graph()
+
+        # Cache computed values outside the loop
+        namespace = get_namespace(models.NSPReaction)
+        nsp_node_type = namespaces.NODE_NS[models.NSPReaction.__name__]
+        basic_node_type = namespaces.NODE_NS[BASIC_NODE_LABEL]
+        nsp_rel = namespaces.RELATION_NS[get_rel_name(models.NSPReaction)]
+
         with self.Session() as session:
-            nsp_reactions = session.query(models.NSPReaction).all()
+            # Eager load organisms relationship
+            nsp_reactions = (
+                session.query(models.NSPReaction)
+                .options(joinedload(models.NSPReaction.organisms))
+                .all()
+            )
 
             for nsp_reaction in tqdm(nsp_reactions, desc="Creating nsp reactions"):
-                namespace = get_namespace(models.NSPReaction)
                 nsp_reac_node: URIRef = namespace[str(nsp_reaction.id)]
                 graph.add(
                     triple=(
                         nsp_reac_node,
                         RDF.type,
-                        namespaces.NODE_NS[models.NSPReaction.__name__],
+                        nsp_node_type,
                     )
                 )
                 graph.add(
                     triple=(
                         nsp_reac_node,
                         RDF.type,
-                        namespaces.NODE_NS[BASIC_NODE_LABEL],
+                        basic_node_type,
                     )
                 )
                 enzyme_class: URIRef = namespaces.EC_NS[str(nsp_reaction.ec_number)]
                 graph.add(
                     (
                         enzyme_class,
-                        namespaces.RELATION_NS[get_rel_name(models.NSPReaction)],
+                        nsp_rel,
                         nsp_reac_node,
                     )
                 )
@@ -748,18 +794,29 @@ class TurtleCreator:
         logging.info("Create RDF compound-reaction link turtle files.")
         reaction_models = [models.Reaction, models.SPReaction, models.NSPReaction]
         for reaction_model in reaction_models:
-            graph: Graph = get_empty_graph()
             logging.info(
-                f"Create RDF substrate and product {reaction_model.__name__} nt file."
+                f"Create RDF substrate and product {reaction_model.__name__} turtle file."
             )
-            graph = get_empty_graph()
+            graph: Graph = get_empty_graph()
+
+            # Cache namespace outside the loop
+            namespace = get_namespace(reaction_model)
+
             with self.Session() as session:
-                reactions = session.query(reaction_model).all()
+                # Eager load substrates and products relationships
+                reactions = (
+                    session.query(reaction_model)
+                    .options(
+                        joinedload(reaction_model.substrates),
+                        joinedload(reaction_model.products),
+                    )
+                    .all()
+                )
 
                 for reaction in tqdm(
-                    reactions, desc=f"Creating {reaction_model.__name__.lower()}s"
+                    reactions,
+                    desc=f"Creating {reaction_model.__name__.lower()}s compound links",
                 ):
-                    namespace = get_namespace(reaction_model)
                     reac_node: URIRef = namespace[str(reaction.id)]
                     self.__create_substrate_product_nodes(reaction, reac_node, graph)
 
@@ -768,112 +825,6 @@ class TurtleCreator:
             )
             graph.serialize(ttl_path, format="ttl", encoding="utf-8")
             del graph
-
-    # TODO: Is this needed?
-    def __create_taxonomy(self):
-        """Create RDF taxonomy turtle file.
-
-        Downloads and parses the NCBI taxonomy (if needed), builds the subset
-        of nodes required by the BRENDA organisms present in the database, and
-        serializes them to ``brenda_organism.ttl``.
-        """
-        logging.info("Create RDF taxonomy turtle file.")
-
-        # download NCBI taxonomy if needed
-        file_name = os.path.basename(urlparse(TAXONOMY_URL).path)
-        taxdmp_path = os.path.join(self.__data_folder, file_name)
-
-        if not os.path.exists(taxdmp_path):
-            urlretrieve(TAXONOMY_URL, taxdmp_path)
-
-        archive = zipfile.ZipFile(taxdmp_path, "r")
-
-        # load nodes in Dataframe
-        nodes = archive.read("nodes.dmp")
-        df_tree = pd.read_csv(
-            io.StringIO(nodes.decode("utf-8")),
-            usecols=[0, 1],
-            sep=r"\t\|\t",
-            engine="python",
-            names=["tax_id", "parent_tax_id"],
-            index_col="tax_id",
-        )
-
-        # load names in Dataframe
-        names_column_names = ["tax_id", "name_txt", "unique_name", "name_class"]
-        names = archive.read("names.dmp")
-        df_tax_names: DataFrame = pd.read_csv(
-            io.StringIO(names.decode("utf-8")),
-            sep=r"\t\|\t",
-            engine="python",
-            names=names_column_names,
-            index_col="tax_id",
-        )
-        df_tax_names.name_class = df_tax_names.name_class.str.replace("\t|", "")
-        df_names: DataFrame = df_tax_names[
-            df_tax_names.name_class == "scientific name"
-        ][["name_txt"]]
-
-        with self.Session() as session:
-            brenda_taxids = (
-                session.query(models.Organism.tax_id)
-                .where(models.Organism.tax_id.isnot(None))
-                .distinct()
-                .all()
-            )
-            brenda_taxids = [int(taxid[0]) for taxid in brenda_taxids]
-
-        # get all needed tax ids (with parents), go up to the root
-        needed_taxids: set[int] = set()
-        for brenda_taxid in brenda_taxids:
-            needed_taxids.update(
-                recursive_get_parents(df_tree=df_tree, parent_id=brenda_taxid)
-            )
-
-        graph: Graph = get_empty_graph()
-        for tax_id in needed_taxids:
-            taxonomy_node: URIRef = namespaces.NCBI_TAXON_NS[str(tax_id)]
-            graph.add(
-                triple=(
-                    taxonomy_node,
-                    RDF.type,
-                    namespaces.NODE_NS[models.Organism.__name__],
-                )
-            )
-            graph.add(
-                triple=(taxonomy_node, RDF.type, namespaces.NODE_NS["_NCBI_Taxonomy"])
-            )
-            name = df_names.loc[tax_id, "name_txt"]
-            graph.add(
-                triple=(
-                    taxonomy_node,
-                    namespaces.RELATION_NS["name"],
-                    Literal(name, datatype=XSD.string),
-                )
-            )
-            graph.add(
-                triple=(
-                    taxonomy_node,
-                    namespaces.RELATION_NS["taxid"],
-                    Literal(tax_id, datatype=XSD.integer),
-                )
-            )
-            parent_tax_id = df_tree.loc[tax_id, "parent_tax_id"]
-            if tax_id != parent_tax_id:
-                parent_taxonomy_node: URIRef = namespaces.NCBI_TAXON_NS[
-                    str(parent_tax_id)
-                ]
-                graph.add(
-                    triple=(
-                        taxonomy_node,
-                        namespaces.RELATION_NS["HAS_PARENT"],
-                        parent_taxonomy_node,
-                    )
-                )
-
-        ttl_path: str = os.path.join(self.__ttls_folder, "brenda_organism.ttl")
-        graph.serialize(destination=ttl_path, format="turtle")
-        del graph
 
     def __create_standard_ttls(self):
         """Create RDF Turtle files for all supported standard models."""
@@ -893,15 +844,6 @@ class TurtleCreator:
         for _model in _models:
             logging.info(f"Creating turtle for { _model.__name__ }")
             self.__create_standard_ttl(_model)
-
-        # self.create_standard_ttl(
-        #     table="cofactor",
-        #     node_label="CofactorInteraction",
-        #     rel_name_1="has_cofactor_interaction",
-        #     rel_name_2="has_cofactor",
-        #     file_name_suffix="cofactor",
-        #     namespace=namespaces.cofactor_ns,
-        # )
 
     def __create_zip_from_all_ttls(self) -> str:
         """Zip all generated Turtle files and return the archive path.
