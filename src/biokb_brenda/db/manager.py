@@ -2,7 +2,7 @@ import os.path
 import re
 import sqlite3
 from logging import getLogger
-from typing import Optional
+from typing import Dict, Optional
 
 import requests
 from sqlalchemy import Engine, create_engine, text
@@ -121,8 +121,8 @@ class DbManager:
         self,
         data_file_path: Optional[str] = None,
         force_download: bool = False,
-        keep_files: bool = True,
-    ):
+        delete_files: bool = False,
+    ) -> Dict[str, int]:
         """Import BRENDA data into the database.
 
         Ensures a data archive is available (downloading if needed), then
@@ -134,7 +134,7 @@ class DbManager:
                 latest archive is fetched from the download page.
             force_download: When ``True`` and ``data_file_path`` is ``None``,
                 forces re-downloading the current archive even if present.
-            keep_files: If ``True``, leaves the archive on disk after import.
+            delete_files: If ``True``, removes the archive from disk after import.
 
         Returns:
             None
@@ -142,6 +142,7 @@ class DbManager:
         if data_file_path is None:
             data_file_path = self.__download_data_file(force=force_download)
         importer = DbImporter(self.__engine)
-        importer.import_from_file(data_file_path)
-        if not keep_files:
+        results = importer.import_from_file(data_file_path)
+        if delete_files:
             os.remove(data_file_path)
+        return results

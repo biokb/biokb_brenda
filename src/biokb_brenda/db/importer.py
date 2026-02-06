@@ -169,7 +169,7 @@ class DbImporter:
         else:
             return {}
 
-    def import_from_file(self, file_path: str | Path):
+    def import_from_file(self, file_path: str | Path) -> Dict[str, int]:
         """Import enzyme data from a JSON file.
 
         Args:
@@ -201,7 +201,7 @@ class DbImporter:
         self.__update_inchi_keys()
         self.__update_organism_tax_ids()
 
-        return len(enzyme_classes.values())
+        return {"enzyme_classes": len(enzyme_classes.values())}
 
     def __import_and_collect_organisms(self, enzyme_classes):
         Org = namedtuple("Org", ["ec", "name", "id"])
