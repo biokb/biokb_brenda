@@ -5,5 +5,5 @@
 ## with podman
 
 ```bash
-podman-compose -f docker-compose.mysql_neo4j_pma.yml up -d
+podman-compose -f docker-compose.yml up -d
 ```
