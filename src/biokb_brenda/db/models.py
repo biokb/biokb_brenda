@@ -2519,7 +2519,6 @@ class TaxonomyName(Base):
     NCBI taxonomy https://www.ncbi.nlm.nih.gov/taxonomys."""
 
     __tablename__ = table_prefix + "taxonomy_name"
-    __table_args__ = {"comment": "Taxonomy names by NCBI"}
     id: Mapped[int] = mapped_column(primary_key=True)
     tax_id: Mapped[int] = mapped_column(index=True, comment="NCBI taxonomy Identifier")
     name: Mapped[str] = mapped_column(Text)
@@ -2532,7 +2531,8 @@ class TaxonomyName(Base):
             "ix_taxonomy_name__name",
             name,
             mysql_length=255,
-        ),
+        ).ddl_if(dialect="mysql"),
+        {"comment": "Taxonomy names by NCBI"},
     )
 
 
