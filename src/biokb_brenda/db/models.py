@@ -438,7 +438,7 @@ class Reference(Base):
             mysql_length={
                 "title": 255,
             },
-        ).ddl_if(dialect="mysql"),
+        ),
     )
 
     def __repr__(self) -> str:
@@ -1536,12 +1536,12 @@ class Compound(Base):
             "ix_compound__name",
             name,
             mysql_length=255,
-        ).ddl_if(dialect="mysql"),
+        ),
         Index(
             "ix_compound__inchi",
             inchi,
             mysql_length=255,
-        ).ddl_if(dialect="mysql"),
+        ),
     )
 
 
@@ -2476,7 +2476,7 @@ class CompInchiChebi(Base):
             "ix_comp_inchi_chebi__compound_name",
             compound_name,
             mysql_length=255,
-        ).ddl_if(dialect="mysql"),
+        ),
     )
 
 
@@ -2495,7 +2495,7 @@ class CompLigChebi(Base):
             "ix_comp_lig_chebi__compound_name",
             compound_name,
             mysql_length=255,
-        ).ddl_if(dialect="mysql"),
+        ),
     )
 
 
@@ -2531,7 +2531,7 @@ class TaxonomyName(Base):
             "ix_taxonomy_name__name",
             name,
             mysql_length=255,
-        ).ddl_if(dialect="mysql"),
+        ),
         {"comment": "Taxonomy names by NCBI"},
     )
 
@@ -2542,7 +2542,7 @@ class ChebiName(Base):
     __tablename__ = table_prefix + "chebi_name"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    chebi_id: Mapped[int]
+    chebi_id: Mapped[int] = mapped_column(index=True)
     name: Mapped[str] = mapped_column(Text)
 
     __table_args__ = (
@@ -2550,7 +2550,7 @@ class ChebiName(Base):
             "ix_chebi_name__name",
             name,
             mysql_length=255,
-        ).ddl_if(dialect="mysql"),
+        ),
     )
 
 
@@ -2568,5 +2568,5 @@ class ChebiInchi(Base):
             "ix_chebi_inchi__inchi",
             inchi,
             mysql_length=255,
-        ).ddl_if(dialect="mysql"),
+        ),
     )
