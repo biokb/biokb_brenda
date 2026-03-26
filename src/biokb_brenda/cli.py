@@ -1,31 +1,62 @@
 import logging
 import os
+from math import log
 from typing import Optional
 
 import click
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
 from biokb_brenda import __version__
 from biokb_brenda.api.main import run_api
-from biokb_brenda.constants import DB_DEFAULT_CONNECTION_STR, NEO4J_URI, NEO4J_USER, PROJECT_NAME
+from biokb_brenda.constants import DB_DEFAULT_CONNECTION_STR, NEO4J_URI, NEO4J_USER
 from biokb_brenda.db.manager import DbManager
 from biokb_brenda.rdf.neo4j_importer import Neo4jImporter
 from biokb_brenda.rdf.turtle import TurtleCreator
+
+logger = logging.getLogger("biokb_brenda")
+
+
+def get_connection_string(environment_file_path: Optional[str]) -> str:
+    """Get the database connection string from environment variables or use default.
+
+    If environment_file_path is None, will not load any environment file and will use default connection string.
+
+    Args:
+        environment_file_path (Optional[str]): Path to the environment file to load.
+    Returns:
+        str: The database connection string.
+    """
+    if environment_file_path:
+        if not os.path.exists(environment_file_path):
+            logger.error("Environment file %s not found.", environment_file_path)
+            return DB_DEFAULT_CONNECTION_STR
+        load_dotenv(environment_file_path)
+        connection_string = os.getenv("CONNECTION_STR")
+        if connection_string is None:
+            logger.warning(
+                "CONNECTION_STR environment variable not found. Using default connection string."
+            )
+            return DB_DEFAULT_CONNECTION_STR
+        return connection_string
+    else:
+        logger.warning("No environment file provided. Using default connection string.")
+        return DB_DEFAULT_CONNECTION_STR
 
 
 def setup_logging(ctx, param, value):
     # Only set up logging if the user actually asks for it
     if value == 1:
-        logging.getLogger("biokb_ipni").setLevel(logging.INFO)
+        logging.getLogger("biokb_brenda").setLevel(logging.INFO)
     elif value >= 2:
-        logging.getLogger("biokb_ipni").setLevel(logging.DEBUG)
+        logging.getLogger("biokb_brenda").setLevel(logging.DEBUG)
 
     # We must add a handler so the logs actually print to the screen
     if value > 0:
         ch = logging.StreamHandler()
         formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
         ch.setFormatter(formatter)
-        logging.getLogger("fetcher").addHandler(ch)
+        logging.getLogger("biokb_brenda").addHandler(ch)
 
     return value
 
@@ -65,11 +96,24 @@ def main():
     "-c",
     "--connection-string",
     type=str,
-    default=DB_DEFAULT_CONNECTION_STR,
+    default=None,
     help=f"SQLAlchemy engine URL [default: {DB_DEFAULT_CONNECTION_STR}]",
 )
-def import_data(force_download: bool, connection_string: str, delete_files: bool):
+@click.option(
+    "-e",
+    "--env",
+    type=str,
+    default=None,
+    help="Environment file to load for configuration (default: None)",
+)
+def import_data(
+    force_download: bool,
+    connection_string: str | None,
+    delete_files: bool,
+    env: str | None,
+):
     """Import data."""
+    connection_string = get_connection_string(env)
     engine = create_engine(connection_string)
     DbManager(engine=engine).import_data(
         force_download=force_download, delete_files=delete_files
@@ -82,15 +126,26 @@ def import_data(force_download: bool, connection_string: str, delete_files: bool
     "-c",
     "--connection-string",
     type=str,
-    default=DB_DEFAULT_CONNECTION_STR,
+    default=None,
     help=f"SQLAlchemy engine URL [default: {DB_DEFAULT_CONNECTION_STR}]",
 )
-def create_ttls(connection_string: str):
+@click.option(
+    "-e",
+    "--env",
+    type=str,
+    default=None,
+    help="Environment file to load for configuration (default: None)",
+)
+def create_ttls(connection_string: str | None, env: str | None):
     """Create TTL files from local database."""
+    connection_string = get_connection_string(env)
     path_to_zip = TurtleCreator(create_engine(connection_string)).create_ttls()
     click.echo(
         f"Path to the zip file containing all generated Turtle files. {path_to_zip}"
     )
+
+
+# TODO: Implemt code to allow load configuration from .env file, and allow user to ignore .env file if they want to use command line arguments. Also, it is not recommended to provide Neo4j password via command line arguments, so we can prompt the user to enter the password if it is not provided via environment variables or command line arguments.
 
 neo4j_uri = os.getenv("NEO4J_URI", NEO4J_URI)
 neo4j_user = os.getenv("NEO4J_USER", NEO4J_USER)
@@ -107,8 +162,21 @@ neo4j_user = os.getenv("NEO4J_USER", NEO4J_USER)
     "--user", "-u", default=neo4j_user, help=f'Neo4j username [default="{neo4j_user}"]'
 )
 @click.option("--password", "-p", default=None, help="Neo4j password")
-def import_neo4j(uri: str, user: str, password: Optional[str]) -> None:
+@click.option(
+    "-e",
+    "--env",
+    type=str,
+    default=None,
+    help="Environment file to load for configuration (default: None)",
+)
+def import_neo4j(uri: str, user: str, password: Optional[str], env: str | None) -> None:
     """Import TTL files into Neo4j database."""
+    if env:
+        load_dotenv(env)  # Load environment variables from the specified .env file
+        uri = os.getenv("NEO4J_URI", NEO4J_URI)
+        user = os.getenv("NEO4J_USER", NEO4J_USER)
+        password = os.getenv("NEO4J_PASSWORD", None)
+
     if password is None:
         password = click.prompt(
             "Please enter the Neo4j password (input will be hidden)", hide_input=True
