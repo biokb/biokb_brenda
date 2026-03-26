@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import secrets
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Generator, Sequence, Tuple
@@ -69,7 +70,7 @@ app = FastAPI(
     description=description,
     version="0.1.0",
     lifespan=lifespan,
-    root_path=os.environ.get("API_BRENDA_ROOT_PATH", "")
+    root_path=os.environ.get("API_BRENDA_ROOT_PATH", ""),
 )
 
 app.add_middleware(
@@ -234,6 +235,41 @@ async def search_enzyme_classes(
         model_cls=models.EnzymeClass,
         db=session,
     )
+
+
+@app.get(
+    "/enzymes/by_organism/",
+    response_model=list[schemas.OrganismEnzymeSearchResult],
+    tags=[Tag.ENZYME],
+)
+async def search_enzymes_by_organism(
+    organism: str = Query(..., description="Organism"),
+    limit: int | None = Query(
+        description="Maximum number of results to return", default=None
+    ),
+    session: Session = Depends(get_session),
+):
+    """
+    Search enzyme classes by EC number, recommended name, or systematic name.
+    """
+    organism = re.sub(r"\s{2,}", " ", organism.strip())
+    stmt = (
+        select(
+            models.Organism.name.label("organism_name"),
+            models.EnzymeClass.ec_number,
+            models.EnzymeClass.recommended_name,
+            models.EnzymeClass.systematic_name,
+        )
+        .join(models.Protein, models.Protein.organism_id == models.Organism.id)
+        .join(
+            models.EnzymeClass, models.Protein.ec_number == models.EnzymeClass.ec_number
+        )
+        .where(models.Organism.name.like(f"{organism}%"))
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    results = session.execute(stmt).mappings().all()
+    return results
 
 
 @app.get(
