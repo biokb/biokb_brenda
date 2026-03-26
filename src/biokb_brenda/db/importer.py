@@ -118,12 +118,12 @@ class DbImporter:
         self.Session = sessionmaker(bind=self.engine)
         self.df_org_ec_name_id: pd.DataFrame  # columns: ec, name, id
         self.lower_org_name_db_ids: dict[str, Any] = {}
-        self.org_cache: Dict[int, Organism] = (
-            {}
-        )  # Cache for organisms by their original ID
-        self.ref_cache: Dict[int, Reference] = (
-            {}
-        )  # Cache for references by their original ID
+        self.org_cache: Dict[
+            int, Organism
+        ] = {}  # Cache for organisms by their original ID
+        self.ref_cache: Dict[
+            int, Reference
+        ] = {}  # Cache for references by their original ID
         self.comp_cache: Dict[str, Compound] = {}  # Cache for compounds by name
 
     def __clear_enzyme_class_caches(self):
@@ -150,7 +150,7 @@ class DbImporter:
                     with io.TextIOWrapper(f_bytes, encoding="utf-8") as f:
                         # Load and return the specific 'data' field
                         enzyme_classes: dict = json.load(f)["data"]
-                        logger.info(f"Loaded {len(enzyme_classes)} enzyme classes")
+                        logger.info("Loaded %d enzyme classes", len(enzyme_classes))
                         if not isinstance(enzyme_classes, dict):
                             raise ValueError(
                                 "The 'data' field in the JSON file is not a dictionary."
@@ -161,6 +161,7 @@ class DbImporter:
         elif file_path.endswith(".json"):
             with open(file_path, "r", encoding="utf-8") as f:
                 enzyme_classes: dict = json.load(f)["data"]
+                logger.info("Loaded %d enzyme classes", len(enzyme_classes))
                 if not isinstance(enzyme_classes, dict):
                     raise ValueError(
                         "The 'data' field in the JSON file is not a dictionary."
@@ -180,7 +181,7 @@ class DbImporter:
         """
         self.__recreate_tables()
         enzyme_classes = self.__load_json_from_file(file_path)
-        logger.info(f"Read enzyme classes")
+        logger.info("Read enzyme classes")
         self.__import_and_collect_organisms(enzyme_classes)
         self.__import_and_collect_references(enzyme_classes)
         counter = 0
@@ -1005,7 +1006,8 @@ class DbImporter:
         )
 
         with self.Session.begin() as session:
-            # update chebi_id in the compound (Compound) table with chebi_id in chebi_name table (ChebiName)
+            # update chebi_id in the compound (Compound) table
+            # with chebi_id in chebi_name table (ChebiName)
             stmt = (
                 update(Compound)
                 .where(
