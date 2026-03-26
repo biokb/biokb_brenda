@@ -264,7 +264,7 @@ async def search_enzymes_by_organism(
         .join(
             models.EnzymeClass, models.Protein.ec_number == models.EnzymeClass.ec_number
         )
-        .where(models.Organism.name.like(f"{organism}%"))
+        .where(models.Organism.name.like(organism))
     )
     if limit is not None:
         stmt = stmt.limit(limit)
