@@ -219,3 +219,4 @@ notebooks/brenda.db
 notebooks/test_data/brenda_inchis.tsv
 .vscode/settings.json
 .env_localhost
+.env_temp

@@ -1,7 +1,7 @@
 import logging
 import os
 from math import log
-from typing import Optional
+from typing import Optional, override
 
 import click
 from dotenv import load_dotenv
@@ -31,7 +31,9 @@ def get_connection_string(environment_file_path: Optional[str]) -> str:
         if not os.path.exists(environment_file_path):
             logger.error("Environment file %s not found.", environment_file_path)
             return DB_DEFAULT_CONNECTION_STR
-        load_dotenv(environment_file_path)
+        load_dotenv(
+            environment_file_path, override=True
+        )  # Load environment variables from the specified .env file, override existing env variables if any
         connection_string = os.getenv("CONNECTION_STR")
         if connection_string is None:
             logger.warning(
@@ -172,7 +174,9 @@ neo4j_user = os.getenv("NEO4J_USER", NEO4J_USER)
 def import_neo4j(uri: str, user: str, password: Optional[str], env: str | None) -> None:
     """Import TTL files into Neo4j database."""
     if env:
-        load_dotenv(env)  # Load environment variables from the specified .env file
+        load_dotenv(
+            env, override=True
+        )  # Load environment variables from the specified .env file, override existing env variables if any
         uri = os.getenv("NEO4J_URI", NEO4J_URI)
         user = os.getenv("NEO4J_USER", NEO4J_USER)
         password = os.getenv("NEO4J_PASSWORD", None)
