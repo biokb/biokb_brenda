@@ -1,11 +1,11 @@
 import logging
 import os
-from math import log
-from typing import Optional, override
+from typing import Optional
 
 import click
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 from biokb_brenda import __version__
 from biokb_brenda.api.main import run_api
@@ -115,12 +115,27 @@ def import_data(
     env: str | None,
 ):
     """Import data."""
-    connection_string = get_connection_string(env)
-    engine = create_engine(connection_string)
+    if env:
+        if connection_string:
+            logger.warning(
+                "Both environment file and connection string provided. Environment have priority."
+            )
+        if not os.path.exists(env):
+            logger.error("Environment file %s not found.", env)
+            return
+        load_dotenv(env, override=True)
+        connection_string = os.getenv("CONNECTION_STR")
+        if connection_string is None:
+            logger.warning(
+                "CONNECTION_STR environment variable not found. Using default connection string."
+            )
+
+    engine: Engine | None = (
+        create_engine(connection_string) if connection_string else None
+    )
     DbManager(engine=engine).import_data(
         force_download=force_download, delete_files=delete_files
     )
-    click.echo(f"Data imported successfully to {connection_string}")
 
 
 @main.command("create-ttls")
