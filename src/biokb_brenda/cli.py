@@ -13,37 +13,9 @@ from biokb_brenda.constants import DB_DEFAULT_CONNECTION_STR, NEO4J_URI, NEO4J_U
 from biokb_brenda.db.manager import DbManager
 from biokb_brenda.rdf.neo4j_importer import Neo4jImporter
 from biokb_brenda.rdf.turtle import TurtleCreator
+from biokb_brenda.tools import get_engine
 
 logger = logging.getLogger("biokb_brenda")
-
-
-def get_connection_string(environment_file_path: Optional[str]) -> str:
-    """Get the database connection string from environment variables or use default.
-
-    If environment_file_path is None, will not load any environment file and will use default connection string.
-
-    Args:
-        environment_file_path (Optional[str]): Path to the environment file to load.
-    Returns:
-        str: The database connection string.
-    """
-    if environment_file_path:
-        if not os.path.exists(environment_file_path):
-            logger.error("Environment file %s not found.", environment_file_path)
-            return DB_DEFAULT_CONNECTION_STR
-        load_dotenv(
-            environment_file_path, override=True
-        )  # Load environment variables from the specified .env file, override existing env variables if any
-        connection_string = os.getenv("CONNECTION_STR")
-        if connection_string is None:
-            logger.warning(
-                "CONNECTION_STR environment variable not found. Using default connection string."
-            )
-            return DB_DEFAULT_CONNECTION_STR
-        return connection_string
-    else:
-        logger.warning("No environment file provided. Using default connection string.")
-        return DB_DEFAULT_CONNECTION_STR
 
 
 def setup_logging(ctx, param, value):
@@ -115,24 +87,11 @@ def import_data(
     env: str | None,
 ):
     """Import data."""
-    if env:
-        if connection_string:
-            logger.warning(
-                "Both environment file and connection string provided. Environment have priority."
-            )
-        if not os.path.exists(env):
-            logger.error("Environment file %s not found.", env)
-            return
-        load_dotenv(env, override=True)
-        connection_string = os.getenv("CONNECTION_STR")
-        if connection_string is None:
-            logger.warning(
-                "CONNECTION_STR environment variable not found. Using default connection string."
-            )
-
-    engine: Engine | None = (
-        create_engine(connection_string) if connection_string else None
-    )
+    try:
+        engine = get_engine(connection_string, env)
+    except ValueError as e:
+        logger.error(f"Error creating database engine: {e}")
+        return
     DbManager(engine=engine).import_data(
         force_download=force_download, delete_files=delete_files
     )
@@ -155,8 +114,12 @@ def import_data(
 )
 def create_ttls(connection_string: str | None, env: str | None):
     """Create TTL files from local database."""
-    connection_string = get_connection_string(env)
-    path_to_zip = TurtleCreator(create_engine(connection_string)).create_ttls()
+    try:
+        engine = get_engine(connection_string, env)
+    except ValueError as e:
+        logger.error(f"Error creating database engine: {e}")
+        return
+    path_to_zip = TurtleCreator(engine).create_ttls()
     click.echo(
         f"Path to the zip file containing all generated Turtle files. {path_to_zip}"
     )
