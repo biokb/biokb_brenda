@@ -7,6 +7,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
+from biokb_brenda.constants import DB_DEFAULT_CONNECTION_STR
+
 logger = getLogger(__name__)
 
 
@@ -83,5 +85,4 @@ def get_engine(
         logger.info(
             f"No environment file provided or CONNECTION_STR not found. Using default connection string {DB_DEFAULT_CONNECTION_STR}."
         )
-
     return engine
