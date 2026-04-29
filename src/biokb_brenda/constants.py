@@ -11,7 +11,7 @@ BASIC_NODE_LABEL = "DbBRENDA"
 ORGANIZATION = "biokb"
 LIBRARY_NAME = f"{ORGANIZATION}_{PROJECT_NAME}"
 HOME = str(Path.home())
-BIOKB_FOLDER = os.path.join(HOME, f".{ORGANIZATION}")
+BIOKB_FOLDER = os.getenv("BIOKB_FOLDER", os.path.join(HOME, f".{ORGANIZATION}"))
 PROJECT_FOLDER = os.path.join(BIOKB_FOLDER, PROJECT_NAME)
 DATA_FOLDER = os.path.join(PROJECT_FOLDER, "data")
 EXPORT_FOLDER = os.path.join(DATA_FOLDER, "ttls")
@@ -23,7 +23,7 @@ NEO4J_URI = "bolt://localhost:7687"
 NEO4J_USER = "neo4j"
 LOGS_FOLDER = os.path.join(DATA_FOLDER, "logs")  # where to store log files
 TABLE_PREFIX = PROJECT_NAME + "_"
-os.makedirs(DATA_FOLDER, exist_ok=True)
+makedirs(DATA_FOLDER, exist_ok=True)
 
 
 # not standard for all biokb projects
@@ -39,6 +39,7 @@ LIGAND_INCHI_CHEBI_FILE = "brenda_ligand_inchi.tsv"
 
 TAXONOMY_URL = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdmp.zip"
 TAXONOMY_DATA_FOLDER = os.path.join(BIOKB_FOLDER, "taxtree", "data")
+makedirs(TAXONOMY_DATA_FOLDER, exist_ok=True)
 
 BASE_URI = "https://biokb.scai.fraunhofer.de/brenda"
 CHEBI_NAMES_URL = (
@@ -47,7 +48,3 @@ CHEBI_NAMES_URL = (
 CHEBI_INCHI_URL = (
     "https://ftp.ebi.ac.uk/pub/databases/chebi/flat_files/structures.tsv.gz"
 )
-
-
-
-

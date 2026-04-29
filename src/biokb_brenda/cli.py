@@ -4,8 +4,6 @@ from typing import Optional
 
 import click
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
 
 from biokb_brenda import __version__
 from biokb_brenda.api.main import run_api
@@ -18,26 +16,27 @@ from biokb_brenda.tools import get_engine
 logger = logging.getLogger("biokb_brenda")
 
 
-def setup_logging(ctx, param, value):
-    # Only set up logging if the user actually asks for it
-    if value == 1:
-        logging.getLogger("biokb_brenda").setLevel(logging.INFO)
-    elif value >= 2:
-        logging.getLogger("biokb_brenda").setLevel(logging.DEBUG)
+def _setup_default_cli_logging() -> None:
+    package_logger = logging.getLogger("biokb_brenda")
 
-    # We must add a handler so the logs actually print to the screen
-    if value > 0:
-        ch = logging.StreamHandler()
-        formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
-        ch.setFormatter(formatter)
-        logging.getLogger("biokb_brenda").addHandler(ch)
+    has_cli_handler = any(
+        getattr(handler, "_biokb_cli_handler", False)
+        for handler in package_logger.handlers
+    )
+    if not has_cli_handler:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(
+            logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+        )
+        setattr(stream_handler, "_biokb_cli_handler", True)
+        package_logger.addHandler(stream_handler)
 
-    return value
+    package_logger.setLevel(logging.INFO)
+    package_logger.propagate = False
 
 
 @click.group()
 @click.version_option(__version__)
-@click.option("-v", count=True, callback=setup_logging, expose_value=False)
 def main():
     """Import in RDBMS, create turtle files and import into Neo4J.
 
@@ -46,7 +45,7 @@ def main():
     2. Create TTL files using `create-ttls` command.\n
     3. Import TTL files into Neo4j using `import-neo4j` command.\n
     """
-    pass
+    _setup_default_cli_logging()
 
 
 @main.command("import-data")
