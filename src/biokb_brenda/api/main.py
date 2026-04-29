@@ -3,7 +3,7 @@ import os
 import re
 import secrets
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Generator, Sequence, Tuple
+from typing import AsyncGenerator, Generator, Sequence
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import Engine, create_engine, select
-from sqlalchemy.engine.row import Row
 from sqlalchemy.orm import Session
 
 from biokb_brenda.api import schemas
