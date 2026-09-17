@@ -83,6 +83,9 @@ tests = [
 [project.scripts]
 biokb_brenda = "biokb_brenda.cli:main"
 
+[tool.ruff.lint]
+ignore = ["UP045"]
+
 [tool.black]
 line-length = 88
 target-version = ['py311', 'py312', 'py313']
