@@ -23,7 +23,6 @@ logger: logging.Logger = logging.getLogger(name=__name__)
 
 
 class Neo4jImporter:
-
     def __init__(
         self,
         neo4j_uri: str | None = None,
@@ -55,7 +54,7 @@ class Neo4jImporter:
                 DETACH DELETE n
                 }} IN TRANSACTIONS OF 10000 ROWS;"""
             cypher = cast(LiteralString, cypher)
-            session.run(cypher)
+            session.run(cypher).consume()
 
     def import_ttl(
         self, path_or_list: str | list[str], delete_nodes_label: str | None = None
